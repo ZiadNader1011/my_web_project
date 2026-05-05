@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id        Int      @id @default(autoincrement())
+  name      String
+  country   String?
+  company   String?
+  email     String?
+  phone     String?
+  telephone String?
+  fax       String?
+  contact   String?
+  address   String?
+  vat       String?
+  agentName String?
+  dhl       String?
+  balance   Float    @default(0)
+  createdAt DateTime @default(now())
+
+  jobs Job[]
+}
+
+model Supplier {
+  id        Int       @id @default(autoincrement())
+  name      String
+  country   String
+  address   String?
+  contact   String?
+  email     String?
+  phone     String?
+  vat       String?
+  agentName String?
+  createdAt DateTime  @default(now())
+
+  products Product[]
+  jobs     Job[]
+}
+
+model Product {
+  id                Int                @id @default(autoincrement())
+  name              String
+  category          String?
+  currency          String             @default("USD")
+  price             Float?
+  supplierId        Int?
+  createdAt         DateTime           @default(now())
+
+  supplier          Supplier?          @relation(fields: [supplierId], references: [id])
+  containerProducts ContainerProduct[]
+  jobProducts       JobProduct[]
+
+  @@index([supplierId]) 
+}
+
+model Job {
+  id                         Int      @id @default(autoincrement())
+  jobNumber                  String   @unique
+  title                      String
+  operationType              String   @default("export")
+  status                     String   @default("active")
+  currency                   String   @default("USD")
+  notes                      String?
+  discountPercentage         Float    @default(0)
+  rawMaterialWeight          Float    @default(0)
+  rawMaterialPricePerTon     Float    @default(0)
+  supplierDiscountPercentage Float    @default(0)
+  pettyCash                  Float    @default(0)
+  createdAt                  DateTime @default(now())
+
+  clientId   Int?
+  supplierId Int?
+
+  client   Client?   @relation(fields: [clientId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  products JobProduct[]
+
+  @@index([clientId])
+  @@index([supplierId])
+}
+
+model JobProduct {
+  id        Int     @id @default(autoincrement())
+  jobId     Int
+  productId Int
+
+  quantity  Float   @default(1)
+  unitPrice Float
+  currency  String  @default("USD")
+  variety   String?
+
+  job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([jobId])
+  @@index([productId])
+}
+
+model Container {
+  id              Int                @id @default(autoincrement()) // ✅ غيرناه لـ Int
+  containerNumber String             @unique
+  sourcePort      String?
+  destinationPort String?
+  shippingDate    DateTime?
+  arrivalDate     DateTime?
+  status          String             @default("loading")
+  createdAt       DateTime           @default(now())
+
+  products        ContainerProduct[]
+  attachments     Attachment[]
+}
+
+model ContainerProduct {
+  id          Int       @id @default(autoincrement())
+  containerId Int       // ✅ لازم يكون Int عشان يطابق Container
+  productId   Int       // ✅ Int عشان يطابق Product
+  quantity    Float     @default(0)
+  unit        String    @default("KG") 
+  // ... باقي الحقول
+  container   Container @relation(fields: [containerId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id])
+}
+
+model Attachment {
+  id          Int       @id @default(autoincrement())
+  containerId Int       // تأكدي إنه Int
+  url         String    @db.Text
+  description String?
+  createdAt   DateTime  @default(now())
+  container   Container @relation(fields: [containerId], references: [id], onDelete: Cascade)
+
+  @@index([containerId])
+}

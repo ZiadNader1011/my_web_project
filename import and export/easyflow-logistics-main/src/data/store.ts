@@ -82,7 +82,7 @@ export interface StandalonePackingList {
   numberOfProducts?: number;
   products?: PackingListProduct[];
 
-  attachments: { id: string; url: string; description: string; createdAt: string }[];
+  attachments: { _id: string; url: string; description: string; createdAt: string }[];
 }
 
 export interface Commission {
@@ -96,11 +96,11 @@ export interface Commission {
   product: string;
   trader: string;
   qualityRepresentative?: string;
-  attachments: { id: string; url: string; description: string; createdAt: string }[];
+  attachments: { _id: string; url: string; description: string; createdAt: string }[];
 }
 
 export interface ShipmentOperation {
-  id: string;
+ id: string;
   operationDate: string;
   jobDate?: string; // legacy support
   jobId: string; // The job / bl number
@@ -113,7 +113,7 @@ export interface ShipmentOperation {
   responsiblePerson?: string;
   qualityRepresentative?: string;
   notes: string;
-  attachments?: { id: string; url: string; description: string; createdAt: string }[];
+  attachments?: { _id: string; url: string; description: string; createdAt: string }[];
   createdAt: string;
 }
 
@@ -179,29 +179,29 @@ export interface Job {
   numberOfContainers?: number;
   containerIds?: string[];
   
-  // New specific fields based on user requests:
+  // New specific fields
   invoiceNumber?: string;
-  blNumber?: string; // Bill of Lading
-  containerNumber?: string; // Excel-like direct container entry
-  customCountry?: string; // Excel-like direct country entry
-  productName?: string; // Excel-like direct product entry
+  blNumber?: string;
+  containerNumber?: string;
+  customCountry?: string;
+  productName?: string;
   exportCertificate?: string;
   shippingAgent?: string;
   incoterm?: string;
   departurePort?: string;
   arrivalPort?: string;
   transitTo?: string;
-  numberOfReps?: number; // Number of quality reps
-  repNames?: string[]; // Array of rep names
+  numberOfReps?: number;
+  repNames?: string[];
   packingListUrl?: string;
-  isSold?: boolean; // For Import operations being sold
+  isSold?: boolean;
   discountPercentage?: number;
   supplierDiscountPercentage?: number;
-  rawMaterialPricePerTon?: number; // Price per ton
-  rawMaterialCost?: number; // Total calculated cost
-  rawMaterialWeight?: number; // New field: Weight in Tons
-  pettyCash?: number; // Optional text/number
-  otherCostReason?: string; // Reason for the other cost
+  rawMaterialPricePerTon?: number;
+  rawMaterialCost?: number;
+  rawMaterialWeight?: number;
+  pettyCash?: number;
+  otherCostReason?: string;
   
   products: JobProduct[];
   totalPrice: number;
@@ -227,25 +227,25 @@ export interface Payment {
 
 export interface Transaction {
   id: string;
-  relatedId?: string; // Can be linked to Job, Supplier, or Client
-  entityId?: string; // Explicitly link to Client or Supplier to separate ledgers
+  relatedId?: string;
+  entityId?: string;
   type: 'incoming' | 'outgoing' | 'petty_cash' | 'raw_material' | 'discount';
   amount: number;
   currency: string;
   date: string;
-  incoterm?: string; // Delivery Incoterms (CFR, CIF, FOB, DAP, EXW)
-  variety?: string; // Variety
-  caliber?: string; // Caliber
-  grade?: string; // Grade
-  weightInTons?: number; // New field for Raw Material Weight
-  pricePerTon?: number; // New field for Excel ledger
-  otherCost?: number; // New field for other costs in Excel ledger
-  blNumber?: string; // Bill of Lading
-  invoiceNumber?: string; // Invoice Number
-  packages?: number; // Packages count
+  incoterm?: string;
+  variety?: string;
+  caliber?: string;
+  grade?: string;
+  weightInTons?: number;
+  pricePerTon?: number;
+  otherCost?: number;
+  blNumber?: string;
+  invoiceNumber?: string;
+  packages?: number;
   description: string;
   bank?: string;
-  attachmentUrl?: string; // Base64 or object URL for photo/pdf
+  attachmentUrl?: string;
   createdAt: string;
 }
 
@@ -260,7 +260,7 @@ export interface UploadedFile {
 }
 
 export interface ShippingAgent {
-  id: string;
+ id: string;
   name: string;
   address?: string;
   telephone?: string;
@@ -272,7 +272,7 @@ export interface ShippingAgent {
 export interface ShippingAgentRecord {
   id: string;
   agentId: string;
-  jobId?: string; // Linked Job
+  jobId?: string;
   date: string;
   blNumber?: string;
   country?: string;
@@ -305,7 +305,7 @@ const STORAGE_KEYS = {
   shipmentOperations: 'erp_shipment_operations',
 };
 
-export type BankBalances = Record<string, Record<string, number>>; // { "CIB Bank": { "USD": 1000, "EUR": 500 } }
+export type BankBalances = Record<string, Record<string, number>>;
 
 export const EGYPTIAN_BANKS = [
   'NBE (National Bank of Egypt)',
@@ -335,43 +335,26 @@ function save<T>(key: string, data: T[]) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
-const seedSuppliers: Supplier[] = [];
-const seedClients: Client[] = [];
-const seedProducts: Product[] = [];
-const seedContainers: Container[] = [];
-const seedJobs: Job[] = [];
-
-const seedPayments: Payment[] = [];
-const seedTransactions: Transaction[] = [];
-const seedFiles: UploadedFile[] = [];
-const seedBankBalances: BankBalances = {};
-const seedShippingAgents: ShippingAgent[] = [];
-const seedShippingAgentRecords: ShippingAgentRecord[] = [];
-const seedEmployees: Employee[] = [];
-const seedPackingLists: StandalonePackingList[] = [];
-const seedCommissions: Commission[] = [];
-const seedShipmentOperations: ShipmentOperation[] = [];
-
-export function getSuppliers(): Supplier[] { return load(STORAGE_KEYS.suppliers, seedSuppliers); }
-export function getClients(): Client[] { return load(STORAGE_KEYS.clients, seedClients); }
-export function getProducts(): Product[] { return load(STORAGE_KEYS.products, seedProducts); }
-export function getContainers(): Container[] { return load(STORAGE_KEYS.containers, seedContainers); }
-export function getJobs(): Job[] { return load(STORAGE_KEYS.jobs, seedJobs); }
-export function getFiles(): UploadedFile[] { return load(STORAGE_KEYS.files, seedFiles); }
-export function getPayments(): Payment[] { return load(STORAGE_KEYS.payments, seedPayments); }
-export function getTransactions(): Transaction[] { return load(STORAGE_KEYS.transactions, seedTransactions); }
-export function getShippingAgents(): ShippingAgent[] { return load(STORAGE_KEYS.shippingAgents, seedShippingAgents); }
-export function getShippingAgentRecords(): ShippingAgentRecord[] { return load(STORAGE_KEYS.shippingAgentRecords, seedShippingAgentRecords); }
-export function getEmployees(): Employee[] { return load(STORAGE_KEYS.employees, seedEmployees); }
-export function getPackingLists(): StandalonePackingList[] { return load(STORAGE_KEYS.packingLists, seedPackingLists); }
-export function getCommissions(): Commission[] { return load(STORAGE_KEYS.commissions, seedCommissions); }
-export function getShipmentOperations(): ShipmentOperation[] { return load(STORAGE_KEYS.shipmentOperations, seedShipmentOperations); }
+export function getSuppliers(): Supplier[] { return load(STORAGE_KEYS.suppliers, []); }
+export function getClients(): Client[] { return load(STORAGE_KEYS.clients, []); }
+export function getProducts(): Product[] { return load(STORAGE_KEYS.products, []); }
+export function getContainers(): Container[] { return load(STORAGE_KEYS.containers, []); }
+export function getJobs(): Job[] { return load(STORAGE_KEYS.jobs, []); }
+export function getFiles(): UploadedFile[] { return load(STORAGE_KEYS.files, []); }
+export function getPayments(): Payment[] { return load(STORAGE_KEYS.payments, []); }
+export function getTransactions(): Transaction[] { return load(STORAGE_KEYS.transactions, []); }
+export function getShippingAgents(): ShippingAgent[] { return load(STORAGE_KEYS.shippingAgents, []); }
+export function getShippingAgentRecords(): ShippingAgentRecord[] { return load(STORAGE_KEYS.shippingAgentRecords, []); }
+export function getEmployees(): Employee[] { return load(STORAGE_KEYS.employees, []); }
+export function getPackingLists(): StandalonePackingList[] { return load(STORAGE_KEYS.packingLists, []); }
+export function getCommissions(): Commission[] { return load(STORAGE_KEYS.commissions, []); }
+export function getShipmentOperations(): ShipmentOperation[] { return load(STORAGE_KEYS.shipmentOperations, []); }
 
 export function getBankBalances(): BankBalances { 
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.bankBalances);
-    return raw ? JSON.parse(raw) : seedBankBalances;
-  } catch { return seedBankBalances; }
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
 }
 
 export function saveSuppliers(d: Supplier[]) { save(STORAGE_KEYS.suppliers, d); }

@@ -1,10 +1,10 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import { FileViewer } from '@/components/FileViewer';
-import { getShippingAgents, saveShippingAgents, getShippingAgentRecords, generateId, ShippingAgent, getTransactions, formatCurrency } from '@/data/store';
+import { ShippingAgent, formatCurrency } from '@/data/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,13 +12,29 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2, Ship, Globe, Mail, User, Phone, Receipt, Paperclip } from 'lucide-react';
 import { toast } from 'sonner';
+import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 export default function ShippingAgents() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [agents, setAgents] = useState<ShippingAgent[]>(getShippingAgents);
-  const records = useMemo(() => getShippingAgentRecords(), []);
-  const transactions = useMemo(() => getTransactions(), []);
+  const queryClient = useQueryClient();
+
+  // 1. جلب البيانات من الداتابيز
+  const { data: agents = [], isLoading } = useQuery({
+    queryKey: ['shippingAgents'],
+    queryFn: () => axios.get('http://localhost:5000/api/shipping-agents').then(res => res.data)
+  });
+
+  const { data: records = [] } = useQuery({
+    queryKey: ['shippingAgentRecords'],
+    queryFn: () => axios.get('http://localhost:5000/api/shippingAgentRecords').then(res => res.data)
+  });
+
+  const { data: transactions = [] } = useQuery({
+    queryKey: ['transactions'],
+    queryFn: () => axios.get('http://localhost:5000/api/transactions').then(res => res.data)
+  });
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -39,49 +55,57 @@ export default function ShippingAgents() {
     setEditOpen(true);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 2. تعديل رفع الملفات ليكون متوافق مع السيرفر (اختياري لو عندك API رفع)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('File too large. Maximum size is 5MB.');
-      if (e.target) e.target.value = '';
-      return;
-    }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setForm(f => ({ ...f, attachmentUrl: event.target!.result as string }));
-        toast.success('File attached to form.');
-      }
-    };
-    reader.readAsDataURL(file);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await axios.post('http://localhost:5000/api/upload', formData);
+      setForm(f => ({ ...f, attachmentUrl: res.data.url }));
+      toast.success('File uploaded successfully');
+    } catch (error) {
+      toast.error('File upload failed');
+    }
   };
 
-  const handleSave = () => {
+  // 3. حفظ البيانات في الداتابيز
+  const handleSave = async () => {
     if (!form.name.trim()) { toast.error('Please enter a name.'); return; }
-    let updated: ShippingAgent[];
-    if (editing) {
-      updated = agents.map(a => a.id === editing.id ? { ...a, ...form } : a);
-      toast.success(`"${form.name}" has been updated!`);
-    } else {
-      updated = [...agents, { id: generateId(), ...form }];
-      toast.success(`"${form.name}" has been added!`);
+
+    try {
+      if (editing) {
+        await axios.put(`http://localhost:5000/api/shipping-agents/${editing.id}`, form);
+        toast.success(`"${form.name}" updated!`);
+      } else {
+        await axios.post('http://localhost:5000/api/shipping-agents', form);
+        toast.success(`"${form.name}" added!`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
+      setEditOpen(false);
+    } catch (error) {
+      toast.error('Failed to save to database');
     }
-    setAgents(updated);
-    saveShippingAgents(updated);
-    setEditOpen(false);
   };
 
-  const handleDelete = useCallback(() => {
+  // 4. حذف البيانات من الداتابيز
+  const handleDelete = useCallback(async () => {
     if (!deleting) return;
-    const updated = agents.filter(a => a.id !== deleting.id);
-    setAgents(updated);
-    saveShippingAgents(updated);
-    toast.success(`"${deleting.name}" has been removed.`);
-    setDeleting(null);
-  }, [deleting, agents]);
+    try {
+      await axios.delete(`http://localhost:5000/api/shipping-agents/${deleting.id}`);
+      queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
+      toast.success(`"${deleting.name}" removed.`);
+      setDeleting(null);
+      setDeleteOpen(false);
+    } catch (error) {
+      toast.error('Failed to delete');
+    }
+  }, [deleting, queryClient]);
+
+  if (isLoading) return <div className="p-8 text-center">Loading Agents...</div>;
 
   return (
     <div>
@@ -94,21 +118,22 @@ export default function ShippingAgents() {
           
           let totalEgp = 0, totalEuro = 0, totalUsd = 0;
           agentRecords.forEach(r => {
-            if (r.costEgp) totalEgp += r.costEgp;
-            if (r.costEuro) totalEuro += r.costEuro;
-            if (r.costUsd) totalUsd += r.costUsd;
+            if (r.costEgp) totalEgp += Number(r.costEgp);
+            if (r.costEuro) totalEuro += Number(r.costEuro);
+            if (r.costUsd) totalUsd += Number(r.costUsd);
           });
 
           let paidEgp = 0, paidEuro = 0, paidUsd = 0;
-          transactions.filter(t => t.relatedId === a.id).forEach(t => {
+          transactions.filter(t => t.relatedId === String(a.id)).forEach(t => {
+            const amt = Number(t.amount || 0);
             if (t.type === 'outgoing') {
-              if (t.currency === 'EGP') paidEgp += t.amount;
-              else if (t.currency === 'EUR') paidEuro += t.amount;
-              else if (t.currency === 'USD') paidUsd += t.amount;
+              if (t.currency === 'EGP') paidEgp += amt;
+              else if (t.currency === 'EUR') paidEuro += amt;
+              else if (t.currency === 'USD') paidUsd += amt;
             } else if (t.type === 'incoming') {
-              if (t.currency === 'EGP') paidEgp -= t.amount;
-              else if (t.currency === 'EUR') paidEuro -= t.amount;
-              else if (t.currency === 'USD') paidUsd -= t.amount;
+              if (t.currency === 'EGP') paidEgp -= amt;
+              else if (t.currency === 'EUR') paidEuro -= amt;
+              else if (t.currency === 'USD') paidUsd -= amt;
             }
           });
 
@@ -149,7 +174,6 @@ export default function ShippingAgents() {
                 </div>
               </div>
 
-              {/* Stats */}
               <div className="mt-4 pt-3 border-t space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5 text-muted-foreground">Records</span>
@@ -202,8 +226,6 @@ export default function ShippingAgents() {
       </Dialog>
 
       <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={handleDelete} itemName={deleting?.name || ''} />
-
-      {/* File Viewer Component */}
       <FileViewer fileUrl={viewingFile} onClose={() => setViewingFile(null)} />
     </div>
   );

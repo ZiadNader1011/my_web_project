@@ -5,8 +5,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { StatCard } from '@/components/StatCard';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import {
-  getJobs, saveJobs, getSuppliers, getProducts, getContainers, getClients, getTransactions, saveTransactions,
-  getShippingAgents, getShipmentOperations, getShippingAgentRecords,
   generateId, Job, JobProduct, JobAttachment, OperationType, formatCurrency, sumByCurrency, formatBalanceObj, formatDate
 } from '@/data/store';
 import { compressImage } from '@/utils/imageCompression';
@@ -26,6 +24,9 @@ import {
   ChevronDown, ChevronUp, Users, Camera, ArrowRightLeft, ArrowUpRight, ArrowDownRight, FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
+import axios from 'axios';
+import { useQuery } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 
 const statusColors: Record<string, string> = {
   active: 'bg-success/10 text-success border-success/20',
@@ -36,17 +37,51 @@ const statusColors: Record<string, string> = {
 export default function Jobs() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [jobs, setJobs] = useState<Job[]>(getJobs);
-  const transactions = useMemo(() => getTransactions(), []);
-  const suppliers = useMemo(() => getSuppliers(), []);
-  const clients = useMemo(() => getClients(), []);
-  const products = useMemo(() => getProducts(), []);
-  const containers = useMemo(() => getContainers(), []);
-  const shippingAgents = useMemo(() => getShippingAgents(), []);
-  const shipmentOperations = useMemo(() => getShipmentOperations(), []);
-  const shippingAgentRecords = useMemo(() => getShippingAgentRecords(), []);
+  const queryClient = useQueryClient();
+  const { data: jobs = [], isLoading } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: async () => {
+      const res = await axios.get('http://localhost:5000/api/jobs');
+      return res.data;
+    }
+  });
+  const { data: transactions = [] } = useQuery({
+    queryKey: ['transactions'],
+    queryFn: () => axios.get('http://localhost:5000/api/transactions').then(res => res.data)
+  });
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => axios.get('http://localhost:5000/api/suppliers').then(res => res.data)
+  });
+  const { data: clients = [] } = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => axios.get('http://localhost:5000/api/clients').then(res => res.data)
+  });
+  const { data: products = [] } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => axios.get('http://localhost:5000/api/products').then(res => res.data)
+  });
+
+  const { data: containers = [] } = useQuery({
+    queryKey: ['containers'],
+    queryFn: () => axios.get('http://localhost:5000/api/containers').then(res => res.data)
+  });
+  const { data: shippingAgents = [] } = useQuery({
+    queryKey: ['shippingAgents'],
+    queryFn: () => axios.get('http://localhost:5000/api/shipping-agents').then(res => res.data)
+  });
+  const { data: shipmentOperations = [] } = useQuery({
+    queryKey: ['shipmentOperations'],
+    queryFn: () => axios.get('http://localhost:5000/api/shipmentOperations').then(res => res.data)
+  });
+
+  const { data: shippingAgentRecords = [] } = useQuery({
+    queryKey: ['shippingAgentRecords'],
+    queryFn: () => axios.get('http://localhost:5000/api/shippingAgentRecords').then(res => res.data)
+  });
 
   const [activeTab, setActiveTab] = useState<OperationType>('export');
+
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -73,17 +108,17 @@ export default function Jobs() {
   const activeJobs = filteredJobs.filter(j => j.status === 'active').length;
 
   const totalValueObj = filteredJobs.reduce((acc, job) => {
-    const hasValidProducts = job.products && job.products.some(p => (Number(p.quantity) || 0) > 0 && (Number(p.unitPrice) || 0) > 0);
-    const discount = job.discountPercentage || 0;
+    const discount = Number(job.discountPercentage || 0);
 
-    if (hasValidProducts) {
+    if (job.products && job.products.length > 0) {
       job.products.forEach(p => {
         const c = p.currency || job.currency;
-        const gross = (Number(p.quantity) || 0) * (Number(p.unitPrice) || 0);
+        const gross = Number(p.quantity || 0) * Number(p.unitPrice || 0);
         acc[c] = (acc[c] || 0) + (gross * (1 - discount / 100));
       });
     } else {
-      acc[job.currency] = (acc[job.currency] || 0) + (job.totalPrice * (1 - discount / 100));
+      const total = Number(job.totalPrice || 0);
+      acc[job.currency] = (acc[job.currency] || 0) + (total * (1 - discount / 100));
     }
     return acc;
   }, {} as Record<string, number>);
@@ -131,13 +166,33 @@ export default function Jobs() {
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const base64 = await compressImage(e.target.files[0]);
-      setForm(f => ({
-        ...f,
-        attachments: [...(f.attachments || []), { id: generateId(), url: base64, description: '', createdAt: new Date().toISOString() }]
-      }));
+      const file = e.target.files[0];
+
+      // بدل الـ Base64، هنبعت الملف للسيرفر فوراً
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await axios.post('http://localhost:5000/api/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        // السيرفر هيرجعلك رابط الصورة الجديد (مثلاً /uploads/image.jpg)
+        const imageUrl = res.data.url;
+
+        setForm(f => ({
+          ...f,
+          attachments: [...(f.attachments || []), {
+            id: generateId(),
+            url: imageUrl, // هنا خزننا الرابط مش الـ Base64
+            description: '',
+            createdAt: new Date().toISOString()
+          }]
+        }));
+      } catch (error) {
+        toast.error("Failed to upload image");
+      }
     }
-    e.target.value = '';
   };
 
   const handlePackingListUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -157,85 +212,76 @@ export default function Jobs() {
 
   const calcTotal = (prods: { quantity?: string | number; unitPrice?: string | number }[]) => prods.reduce((s, p) => s + (Number(p.quantity) || 0) * (Number(p.unitPrice) || 0), 0);
 
-  const handleSave = () => {
-    if (!form.title.trim()) { toast.error('Please enter a job title.'); return; }
-    // Validations based on type removed for flexibility
-    const parsedProducts = form.products.map(p => ({
-      ...p,
-      quantity: Number(p.quantity) || 0,
-      unitPrice: Number(p.unitPrice) || 0,
-      packages: p.packages
-    }));
-    const totalPrice = calcTotal(parsedProducts);
-    const calculatedRawMaterialCost = (Number(form.rawMaterialPricePerTon) || 0) * (Number(form.rawMaterialWeight) || 0);
+ const handleSave = async () => {
+  if (!form.title.trim()) {
+    toast.error('Please enter a job title.');
+    return;
+  }
 
-    // Auto-calculate final net values if this job impacts the statement
-    // Total Revenue = totalPrice - (totalPrice * (form.discountPercentage/100))
-    // Total Cost = rawMaterialCost + pettyCash
-
-    const finalJobData: Job = {
-      ...form,
-      products: parsedProducts,
-      rawMaterialPricePerTon: Number(form.rawMaterialPricePerTon) || 0,
-      rawMaterialWeight: Number(form.rawMaterialWeight) || 0,
-      pettyCash: Number(form.pettyCash) || 0,
-      discountPercentage: Number(form.discountPercentage) || 0,
-      supplierDiscountPercentage: Number(form.supplierDiscountPercentage) || 0,
-      rawMaterialCost: calculatedRawMaterialCost,
-      id: editing ? editing.id : generateId(),
-      supplierId: form.supplierId === 'none' ? undefined : form.supplierId,
-      clientId: form.clientId === 'none' ? undefined : form.clientId,
-      containerId: form.containerId === 'none' ? undefined : form.containerId,
-      numberOfContainers: Number(form.numberOfContainers) || 0,
-      containerIds: form.containerIds,
-      totalPrice,
-      numberOfReps: Number(form.numberOfReps) || 0,
-      repNames: form.repNames.slice(0, Number(form.numberOfReps) || 0),
-      createdAt: form.createdAt ? new Date(form.createdAt + 'T12:00:00Z').toISOString() : new Date().toISOString()
-    };
-
-    let updated: Job[];
-    if (editing) {
-      updated = jobs.map(j => j.id === editing.id ? finalJobData : j);
-
-      // Synchronize related transaction dates if the Job's creation date changed
-      const oldDateOnly = editing.createdAt ? new Date(editing.createdAt).toISOString().split('T')[0] : '';
-      const newDateOnly = finalJobData.createdAt.split('T')[0];
-
-      if (oldDateOnly !== newDateOnly) {
-        const allTx = getTransactions();
-        let changedTx = false;
-        const updatedTx = allTx.map(t => {
-          if (t.relatedId === editing.id) {
-            changedTx = true;
-            return { ...t, date: newDateOnly };
-          }
-          return t;
-        });
-        if (changedTx) {
-          saveTransactions(updatedTx);
-        }
-      }
-
-      toast.success(`"${form.title}" has been updated! ✨`);
-    } else {
-      updated = [...jobs, finalJobData];
-      toast.success(`"${form.title}" has been created! 🎉`);
-    }
-    setJobs(updated);
-    saveJobs(updated);
-    setEditOpen(false);
+  // تجهيز البيانات بشكل يطابق توقعات Prisma في الباك إند
+  const finalJobData = {
+    title: form.title,
+    operationType: activeTab, // تأكد من إرسال نوع العملية (export/import/supply)
+    status: form.status,
+    currency: form.currency,
+    notes: form.notes,
+    
+    // تحويل القيم لـ Numbers أو null لـ Foreign Keys
+    supplierId: form.supplierId === 'none' ? null : Number(form.supplierId),
+    clientId: form.clientId === 'none' ? null : Number(form.clientId),
+    
+    // البيانات المالية
+    discountPercentage: parseFloat(form.discountPercentage.toString()) || 0,
+    supplierDiscountPercentage: parseFloat(form.supplierDiscountPercentage.toString()) || 0,
+    rawMaterialPricePerTon: parseFloat(form.rawMaterialPricePerTon.toString()) || 0,
+    rawMaterialWeight: parseFloat(form.rawMaterialWeight.toString()) || 0,
+    pettyCash: parseFloat(form.pettyCash.toString()) || 0,
+    
+    // تنسيق المنتجات كما يتوقعها الـ Controller (p.productId و p.unitPrice)
+    products: form.products.map(p => ({
+      productId: p.productId, // في الكنترولر سيتحول لاسم المنتج name
+      unitPrice: parseFloat(p.unitPrice.toString()) || 0,
+      variety: p.variety,
+      currency: p.currency || form.currency
+    }))
   };
 
-  const handleDelete = useCallback(() => {
-    if (!deleting) return;
-    const updated = jobs.filter(j => j.id !== deleting.id);
-    setJobs(updated);
-    saveJobs(updated);
-    toast.success(`Removed job.`);
-    setDeleting(null);
-  }, [deleting, jobs]);
+  try {
+    if (editing) {
+      // التعديل: نستخدم المسار الصحيح /update/:id
+      await axios.put(`http://localhost:5000/api/jobs/update/${editing.id}`, finalJobData);
+      toast.success(`"${form.title}" updated!`);
+    } else {
+      // الإضافة: نستخدم المسار الصحيح المباشر /api/jobs (بدون add)
+      await axios.post('http://localhost:5000/api/jobs', finalJobData);
+      toast.success(`"${form.title}" created!`);
+    }
 
+    queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    setEditOpen(false);
+    setForm(emptyForm);
+  } catch (error) {
+    console.error("Error saving job:", error);
+    toast.error("Failed to save to database. Check console for details.");
+  }
+};
+
+  const handleDelete = useCallback(async () => {
+  if (!deleting) return;
+
+  try {
+    // استخدام المسار الصحيح للحذف
+    await axios.delete(`http://localhost:5000/api/jobs/delete/${deleting.id}`);
+
+    queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    toast.success(`Job removed successfully.`);
+    setDeleting(null);
+    setDeleteOpen(false);
+  } catch (error) {
+    console.error("Delete Error:", error);
+    toast.error("Failed to delete from database.");
+  }
+}, [deleting, queryClient]);
   return (
     <div>
       <PageHeader title={t('common.jobs', 'Jobs')} description={t('pages.jobsDesc', 'Manage your import, export, and supply jobs centrally.')}
@@ -272,7 +318,13 @@ export default function Jobs() {
                 : { [job.currency]: job.totalPrice };
 
               const jobProductsValuationObj = Object.fromEntries(
-                Object.entries(jobProductsValuationObjGross).map(([c, v]) => [c, v * (1 - (job.discountPercentage || 0) / 100)])
+                Object.entries(jobProductsValuationObjGross).map(([c, v]) => {
+                  // نحدد إن v رقم بشكل صريح، ونحول الـ discount لرقم برضه
+                  const value = Number(v) || 0;
+                  const discount = Number(job.discountPercentage || 0);
+
+                  return [c, value * (1 - discount / 100)];
+                })
               );
 
               const formatMultiTotal = (obj: Record<string, number>) => {
@@ -288,7 +340,9 @@ export default function Jobs() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <Briefcase className="h-4 w-4 text-primary" />
                           <h3 className="font-semibold text-foreground">{job.title}</h3>
-                          <Badge variant="outline" className={statusColors[job.status]}>{t(`status.${job.status}`, job.status)}</Badge>
+                          <Badge variant="outline" className={job?.status ? (statusColors[job.status] || '') : ''}>
+                            {job?.status ? t(`status.${job.status}` as any, { defaultValue: job.status }) : '...'}
+                          </Badge>
                           {job.isSold && <Badge variant="secondary">Sold</Badge>}
                         </div>
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
@@ -391,7 +445,12 @@ export default function Jobs() {
                               });
 
                               const baseDiscountObj = Object.fromEntries(
-                                Object.entries(grossValuationObj).map(([c, v]) => [c, v * ((job.discountPercentage || 0) / 100)])
+                                Object.entries(grossValuationObj).map(([c, v]) => {
+                                  // التأكد من أن v رقم قبل ضربه
+                                  const val = Number(v) || 0;
+                                  const discount = Number(job.discountPercentage || 0);
+                                  return [c, val * (discount / 100)];
+                                })
                               );
 
                               const totalOtherCostsObj = mergeCurr(baseOtherObj, txPettyCashObj, txOtherCostObj, agentCostObj);
@@ -457,6 +516,11 @@ export default function Jobs() {
                           <div className="rounded-lg bg-muted/40 p-3 space-y-2">
                             {job.products.map((jp, i) => {
                               const prod = products.find(p => p.id === jp.productId);
+                              // تحويل القيم لأرقام بشكل آمن لمنع خطأ Arithmetic Operation
+                              const quantity = Number(jp.quantity || 0);
+                              const unitPrice = Number(jp.unitPrice || 0);
+                              const lineTotal = quantity * unitPrice;
+
                               return (
                                 <div key={i} className="flex items-center justify-between text-sm">
                                   <div className="flex items-center gap-2">
@@ -464,8 +528,10 @@ export default function Jobs() {
                                     <span className="text-foreground">{prod?.name || 'Unknown'}</span>
                                   </div>
                                   <span className="text-muted-foreground">
-                                    {jp.quantity} × {formatCurrency(jp.unitPrice, jp.currency || job.currency)} = <span className="font-medium text-foreground">{formatCurrency(jp.quantity * jp.unitPrice, jp.currency || job.currency)}</span>
-                                    {jp.packages && ` · ${jp.packages} pkgs`}
+                                    {quantity} × {formatCurrency(unitPrice, jp.currency || job.currency)} =
+                                    <span className="font-medium text-foreground">
+                                      {formatCurrency(lineTotal, jp.currency || job.currency)}
+                                    </span>
                                   </span>
                                 </div>
                               );
@@ -982,7 +1048,13 @@ export default function Jobs() {
 
       <FileViewer fileUrl={previewImage} onClose={() => setPreviewImage(null)} />
 
-      <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={handleDelete} itemName={deleting?.title || ''} />
+      <DeleteConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onConfirm={handleDelete}
+        // نستخدم title أو name ونحولها لنص لضمان عدم تمرير undefined
+        itemName={String(deleting?.title || deleting?.id || '')}
+      />
     </div>
   );
 }

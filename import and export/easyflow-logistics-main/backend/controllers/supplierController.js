@@ -18,7 +18,6 @@ exports.createSupplier = async (req, res) => {
         });
         res.status(201).json(newSupplier);
     } catch (error) {
-        console.error("Error creating supplier:", error);
         res.status(400).json({ error: error.message });
     }
 };
@@ -27,7 +26,7 @@ exports.createSupplier = async (req, res) => {
 exports.getSuppliers = async (req, res) => {
     try {
         const suppliers = await prisma.supplier.findMany({
-            orderBy: { name: 'asc' } // ترتيب أبجدي للـ "هندمة"
+            orderBy: { name: 'asc' }
         });
         res.json(suppliers);
     } catch (error) {
@@ -35,41 +34,39 @@ exports.getSuppliers = async (req, res) => {
     }
 };
 
-// 3. تعديل مورد (إضافة الدالة المفقودة)
-// 3. تعديل مورد (النسخة المصححة)
+// 3. تعديل مورد (النسخة المنظمة)
 exports.updateSupplier = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, country, contact, email, phone, product } = req.body; 
-
+        // نمرر req.body مباشرة لتبسيط الكود، أو نحدد الحقول بدقة
         const updated = await prisma.supplier.update({
-            where: { id: Number(id) }, // التعديل هنا: حولنا الـ id لرقم
+            where: { id: Number(id) },
             data: {
-                name,
-                country,
-                contact: contact || null,
-                email: email || null,
-                phone: phone || null,
-                agentName: product || null 
+                ...req.body // هيأخد كل الحقول المبعوثة من الفرونت إند
             }
         });
-        
         res.json(updated);
     } catch (error) {
-        console.error("Update Error:", error);
         res.status(400).json({ error: error.message });
     }
 };
 
-// 4. مسح مورد
+// 4. حذف مورد
 exports.deleteSupplier = async (req, res) => {
     try {
         const { id } = req.params;
+        
+        // لو مش عاملة Cascade في الـ Schema، لازم تمسحي المنتجات يدوياً هنا الأول:
+        // await prisma.product.deleteMany({ where: { supplierId: Number(id) } });
+
         await prisma.supplier.delete({
-            where: { id: Number(id) } // التعديل هنا أيضاً
+            where: { id: Number(id) }
         });
         res.json({ message: "Supplier deleted successfully" });
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        console.error("Delete Supplier Error:", error.message);
+        res.status(400).json({ 
+            error: "Cannot delete supplier: Check if they have linked products or jobs." 
+        });
     }
 };

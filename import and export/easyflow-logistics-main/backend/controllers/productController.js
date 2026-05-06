@@ -39,13 +39,15 @@ exports.updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, category, price, supplierId } = req.body;
+    
     const updatedProduct = await prisma.product.update({
       where: { id: Number(id) },
       data: {
-        name,
-        category,
-        price: parseFloat(price) || 0,
-        supplierId: supplierId ? Number(supplierId) : null,
+        // نستخدم "undefined" لو الحقل مجاش، عشان بريسما متحدثوش وتديله قيمة قديمة
+        name: name !== undefined ? name : undefined,
+        category: category !== undefined ? category : undefined,
+        price: price !== undefined ? parseFloat(price) : undefined,
+        supplierId: supplierId !== undefined ? (supplierId ? Number(supplierId) : null) : undefined,
       }
     });
     res.json(updatedProduct);

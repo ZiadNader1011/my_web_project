@@ -18,15 +18,15 @@ const upload = multer({ storage });
 router.post('/', upload.single('pdfFile'), async (req, res) => {
     try {
         const data = req.body;
-        
-        // إذا تم رفع ملف، نأخذ المسار الخاص به
         const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
         const newRecord = await prisma.shippingAgentRecord.create({
             data: {
-                agentId: data.agentId,
-                date: new Date(data.date), // تحويل النص لتاريخ صالح لـ PostgreSQL
-                jobId: (data.jobId === 'none' || !data.jobId) ? null : data.jobId,
+                // تحويل الـ IDs لأرقام لأن Postgres بيرفض الـ String في خانة الـ Int
+                agentId: parseInt(data.agentId), 
+                date: new Date(data.date), 
+                // التعامل مع الـ jobId بحذر
+                jobId: (data.jobId === 'none' || !data.jobId) ? null : parseInt(data.jobId),
                 blNumber: data.blNumber || '',
                 country: data.country || '',
                 containerCount: parseInt(data.containerCount) || 0,
@@ -36,7 +36,7 @@ router.post('/', upload.single('pdfFile'), async (req, res) => {
                 costEuroNote: data.costEuroNote || '',
                 costUsd: parseFloat(data.costUsd) || 0,
                 costUsdNote: data.costUsdNote || '',
-                pdfUrl: fileUrl, // حفظ المسار في قاعدة البيانات
+                pdfUrl: fileUrl, 
             }
         });
 
@@ -46,6 +46,7 @@ router.post('/', upload.single('pdfFile'), async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 // 2. جلب السجلات (GET)
 router.get('/', async (req, res) => {
@@ -64,12 +65,11 @@ router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         await prisma.shippingAgentRecord.delete({
-            where: { id: id }
+            where: { id: parseInt(id) } // تحويل الـ ID لـ Integer
         });
         res.json({ success: true, message: "Record deleted successfully" });
     } catch (error) {
+        console.error("Delete Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
-
-module.exports = router;

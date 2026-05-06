@@ -221,6 +221,7 @@ export default function Jobs() {
   // تجهيز البيانات بشكل يطابق توقعات Prisma في الباك إند
   const finalJobData = {
     title: form.title,
+    jobNumber: form.invoiceNumber || `JOB-${Date.now()}`,
     operationType: activeTab, // تأكد من إرسال نوع العملية (export/import/supply)
     status: form.status,
     currency: form.currency,
@@ -237,21 +238,21 @@ export default function Jobs() {
     rawMaterialWeight: parseFloat(form.rawMaterialWeight.toString()) || 0,
     pettyCash: parseFloat(form.pettyCash.toString()) || 0,
     
-    // تنسيق المنتجات كما يتوقعها الـ Controller (p.productId و p.unitPrice)
-    products: form.products.map(p => ({
-      productId: p.productId, // في الكنترولر سيتحول لاسم المنتج name
-      unitPrice: parseFloat(p.unitPrice.toString()) || 0,
-      variety: p.variety,
-      currency: p.currency || form.currency
-    }))
+  // تأكد إن الجزء ده في handleSave كدة:
+products: form.products.map(p => ({
+  productId: Number(p.productId), // لازم يكون الرقم التعريفي للمنتج
+  quantity: parseFloat(p.quantity.toString()) || 0,
+  unitPrice: parseFloat(p.unitPrice.toString()) || 0,
+  currency: p.currency || form.currency
+}))
   };
 
   try {
-    if (editing) {
-      // التعديل: نستخدم المسار الصحيح /update/:id
-      await axios.put(`http://localhost:5000/api/jobs/update/${editing.id}`, finalJobData);
-      toast.success(`"${form.title}" updated!`);
-    } else {
+  if (editing) {
+  // الصح: نبعت على /api/jobs/:id مباشرة
+  await axios.put(`http://localhost:5000/api/jobs/${editing.id}`, finalJobData);
+  toast.success(`"${form.title}" updated!`);
+} else {
       // الإضافة: نستخدم المسار الصحيح المباشر /api/jobs (بدون add)
       await axios.post('http://localhost:5000/api/jobs', finalJobData);
       toast.success(`"${form.title}" created!`);
@@ -271,7 +272,7 @@ export default function Jobs() {
 
   try {
     // استخدام المسار الصحيح للحذف
-    await axios.delete(`http://localhost:5000/api/jobs/delete/${deleting.id}`);
+    await axios.delete(`http://localhost:5000/api/jobs/${deleting.id}`);
 
     queryClient.invalidateQueries({ queryKey: ['jobs'] });
     toast.success(`Job removed successfully.`);

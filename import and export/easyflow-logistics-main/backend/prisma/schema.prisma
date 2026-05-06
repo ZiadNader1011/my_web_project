@@ -7,12 +7,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// -----------------------------------------------------------
+// 1. العملاء (Clients)
+// -----------------------------------------------------------
 model Client {
   id        Int      @id @default(autoincrement())
   name      String
+  email     String?  @unique // منع تكرار الإيميل للعملاء احترافي جداً
   country   String?
   company   String?
-  email     String?
   phone     String?
   telephone String?
   fax       String?
@@ -23,118 +26,220 @@ model Client {
   dhl       String?
   balance   Float    @default(0)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt // إضافة تلقائية لوقت التعديل
 
   jobs Job[]
 }
 
+// -----------------------------------------------------------
+// 2. الموردين (Suppliers)
+// -----------------------------------------------------------
 model Supplier {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   name      String
   country   String
   address   String?
   contact   String?
-  email     String?
+  email     String?  @unique
   phone     String?
   vat       String?
   agentName String?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   products Product[]
   jobs     Job[]
 }
 
+// -----------------------------------------------------------
+// 3. المنتجات (Products)
+// -----------------------------------------------------------
 model Product {
-  id                Int                @id @default(autoincrement())
-  name              String
-  category          String?
-  currency          String             @default("USD")
-  price             Float?
-  supplierId        Int?
-  createdAt         DateTime           @default(now())
+  id         Int      @id @default(autoincrement())
+  name       String
+  category   String?
+  currency   String   @default("USD")
+  price      Float?
+  createdAt  DateTime @default(now())
+  
+  supplierId Int?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull) // لو مسحنا المورد المنتج يفضل موجود بس المورد يبقا فاضي
 
-  supplier          Supplier?          @relation(fields: [supplierId], references: [id])
   containerProducts ContainerProduct[]
   jobProducts       JobProduct[]
 
   @@index([supplierId]) 
 }
 
+// -----------------------------------------------------------
+// 4. العمليات/الوظائف (Jobs)
+// -----------------------------------------------------------
 model Job {
-  id                         Int      @id @default(autoincrement())
-  jobNumber                  String   @unique
-  title                      String
-  operationType              String   @default("export")
-  status                     String   @default("active")
-  currency                   String   @default("USD")
-  notes                      String?
-  discountPercentage         Float    @default(0)
-  rawMaterialWeight          Float    @default(0)
-  rawMaterialPricePerTon     Float    @default(0)
-  supplierDiscountPercentage Float    @default(0)
-  pettyCash                  Float    @default(0)
-  createdAt                  DateTime @default(now())
+  id                     Int      @id @default(autoincrement())
+  jobNumber              String   @unique
+  title                  String
+  operationType          String   @default("export") // export, import
+  status                 String   @default("active")
+  currency               String   @default("USD")
+  notes                  String?  @db.Text
+  discountPercentage     Float    @default(0)
+  rawMaterialWeight      Float    @default(0)
+  rawMaterialPricePerTon Float    @default(0)
+  pettyCash              Float    @default(0)
+  createdAt              DateTime @default(now())
+  shippingRecords ShippingAgentRecord[]
+  attachments            Json?
+  packingLists           PackingList[]
 
   clientId   Int?
   supplierId Int?
 
-  client   Client?   @relation(fields: [clientId], references: [id])
-  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  // الحذف المتسلسل: لو مسحنا العميل أو المورد، الـ Job يختفي تلقائياً
+  client   Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
   products JobProduct[]
 
   @@index([clientId])
   @@index([supplierId])
+  @@index([jobNumber]) // فهرسة رقم العملية للبحث السريع
 }
 
+// -----------------------------------------------------------
+// 5. منتجات العملية (Job Products) - كسر علاقة Many-to-Many
+// -----------------------------------------------------------
 model JobProduct {
-  id        Int     @id @default(autoincrement())
+  id        Int    @id @default(autoincrement())
   jobId     Int
   productId Int
-
-  quantity  Float   @default(1)
+  quantity  Float  @default(1)
   unitPrice Float
-  currency  String  @default("USD")
+  currency  String @default("USD")
   variety   String?
 
   job     Job     @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([jobId])
   @@index([productId])
 }
 
+// -----------------------------------------------------------
+// 6. الحاويات (Containers)
+// -----------------------------------------------------------
 model Container {
-  id              Int                @id @default(autoincrement()) // ✅ غيرناه لـ Int
-  containerNumber String             @unique
+  id              Int       @id @default(autoincrement())
+  containerNumber String    @unique
   sourcePort      String?
   destinationPort String?
   shippingDate    DateTime?
   arrivalDate     DateTime?
-  status          String             @default("loading")
-  createdAt       DateTime           @default(now())
+  status          String    @default("loading")
+  createdAt       DateTime  @default(now())
 
-  products        ContainerProduct[]
-  attachments     Attachment[]
+  products    ContainerProduct[]
+  attachments Attachment[]
+
+  @@index([containerNumber])
 }
 
+// -----------------------------------------------------------
+// 7. منتجات الحاوية (Container Products)
+// -----------------------------------------------------------
 model ContainerProduct {
-  id          Int       @id @default(autoincrement())
-  containerId Int       // ✅ لازم يكون Int عشان يطابق Container
-  productId   Int       // ✅ Int عشان يطابق Product
-  quantity    Float     @default(0)
-  unit        String    @default("KG") 
-  // ... باقي الحقول
-  container   Container @relation(fields: [containerId], references: [id], onDelete: Cascade)
-  product     Product   @relation(fields: [productId], references: [id])
-}
+  id          Int    @id @default(autoincrement())
+  containerId Int
+  productId   Int
+  quantity    Float  @default(0)
+  unit        String @default("KG")
 
-model Attachment {
-  id          Int       @id @default(autoincrement())
-  containerId Int       // تأكدي إنه Int
-  url         String    @db.Text
-  description String?
-  createdAt   DateTime  @default(now())
-  container   Container @relation(fields: [containerId], references: [id], onDelete: Cascade)
+  container Container @relation(fields: [containerId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([containerId])
+  @@index([productId])
+}
+
+// -----------------------------------------------------------
+// 8. المرفقات (Attachments)
+// -----------------------------------------------------------
+model Attachment {
+  id          Int      @id @default(autoincrement())
+  containerId Int
+  url         String   @db.Text
+  description String?
+  createdAt   DateTime @default(now())
+
+  container Container @relation(fields: [containerId], references: [id], onDelete: Cascade)
+
+  @@index([containerId])
+}
+// ضيف دول في آخر ملف الـ schema.prisma عندك
+
+// جدول وكلاء الشحن الأساسي
+model ShippingAgent {
+  id             Int                   @id @default(autoincrement())
+  name           String
+  address        String?
+  telephone      String?
+  personalNumber String?
+  email          String?               @unique
+  attachmentUrl  String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  records        ShippingAgentRecord[]
+}
+
+// سجل المصاريف الخاص بوكلاء الشحن
+model ShippingAgentRecord {
+  id             Int           @id @default(autoincrement())
+  date           DateTime      @default(now())
+  blNumber       String?
+  country        String?
+  containerCount Int           @default(0)
+  costEgp        Float         @default(0)
+  costEgpNote    String?
+  costEuro       Float         @default(0)
+  costEuroNote   String?
+  costUsd        Float         @default(0)
+  costUsdNote    String?
+  pdfUrl         String?
+  createdAt      DateTime      @default(now())
+
+  // الربط بوكيل الشحن (اجباري)
+  agentId        Int
+  agent          ShippingAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  // الربط بالعملية (اختياري - Relation with Job)
+  jobId          Int?
+  job            Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([agentId])
+  @@index([jobId])
+}
+model PackingList {
+  id                 Int      @id @default(autoincrement())
+  date               DateTime
+  blNumber           String?
+  clientName         String
+  invoiceNumber      String?
+  customRelease      String?
+  note               String?  @db.Text
+  shippingAgent      String?
+  pol                String?
+  pod                String?
+  finalDestination   String?
+  shippingDate       DateTime?
+  
+  containerNumbers   Json?    
+  products           Json?    
+  attachments        Json?    
+
+  // ربط اختياري بالعملية لربط السيستم ببعضه
+  jobId              Int?
+  job                Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  createdAt          DateTime @default(now())
+  @@index([jobId])
 }

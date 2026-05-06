@@ -12,7 +12,7 @@ import { Plus, ArrowRight, ArrowLeft, Receipt, DollarSign, Percent, Trash2 } fro
 import { toast } from 'sonner';
 
 interface Props {
-  entityId: string; // Could be JobId, SupplierId, ClientId
+  entityId: number | string;
   entityType: 'job' | 'supplier' | 'client';
   entityName: string;
   onUpdate?: () => void;
@@ -38,7 +38,7 @@ export function AccountStatement({ entityId, entityType, entityName, onUpdate }:
 
     const newTx: Transaction = {
       id: generateId(),
-      relatedId: entityId,
+      relatedId: String(entityId), // تحويل الرقم لنص لإرضاء TypeScript
       type: form.type,
       amount: parsedAmount,
       currency: form.currency,

@@ -2,19 +2,24 @@ const express = require('express');
 const router = express.Router();
 const jobController = require('../controllers/jobController');
 
-// جلب الكل
+// 1. جلب كل العمليات
+// GET /api/jobs
 router.get('/', jobController.getAllJobs);
 
-// إضافة جديد
+// 2. إضافة عملية جديدة
+// POST /api/jobs
 router.post('/', jobController.createJob);
 
-// جلب تفاصيل وظيفة واحدة (مهم جداً لملف JobDetails.tsx)
+// 3. جلب تفاصيل عملية واحدة (المستخدمة في JobDetails.tsx)
+// GET /api/jobs/:id
 router.get('/:id', jobController.getJobById);
 
-// التعديل - لو الـ Frontend بيبعت على api/jobs/update/1
-router.put('/update/:id', jobController.updateJob);
+// 4. التعديل (تم إزالة كلمة update ليكون الرابط قياسياً)
+// PUT /api/jobs/:id
+router.put('/:id', jobController.updateJob);
 
-// الحذف - لو الـ Frontend بيبعت على api/jobs/delete/1
-router.delete('/delete/:id', jobController.deleteJob);
+// 5. الحذف (تم إزالة كلمة delete ليكون الرابط قياسياً)
+// DELETE /api/jobs/:id
+router.delete('/:id', jobController.deleteJob);
 
 module.exports = router;

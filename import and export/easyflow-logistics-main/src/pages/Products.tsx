@@ -2,45 +2,43 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
+import { Product } from '@/data/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Wheat, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Wheat ,Loader2} from 'lucide-react';
 import { toast } from 'sonner';
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 export default function Products() {
-  const { t } = useTranslation();
+  
   const queryClient = useQueryClient();
 
-  // 1. جلب الموردين من PostgreSQL
-  const { data: suppliers = [] } = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: async () => {
-      // تم توحيد المسار ليكون متوافق مع الراوت الجديد
-      const res = await axios.get('http://localhost:5000/api/suppliers');
-      return res.data;
-    }
-  });
+const { data: products = [], isLoading } = useQuery({
+  queryKey: ['products'],
+  queryFn: async () => (await axios.get('http://localhost:5000/api/products')).data
+});
+const { data: suppliers = [] } = useQuery({
+  queryKey: ['suppliers'],
+queryFn: async () => {
+  const res = await axios.get('http://localhost:5000/api/suppliers');
 
-  // 2. جلب المنتجات من PostgreSQL
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ['products'],
-    queryFn: async () => {
-      const res = await axios.get('http://localhost:5000/api/products');
-      return res.data;
-    }
-  });
+  console.log(res.data);
 
+  return Array.isArray(res.data)
+    ? res.data
+    : res.data.suppliers || [];
+}});
+console.log("SUPPLIERS => ", suppliers);
+  const { t } = useTranslation();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editing, setEditing] = useState<any | null>(null);
-  const [deleting, setDeleting] = useState<any | null>(null);
-  
-  const emptyForm = { name: '', category: '', supplierId: '', price: '' };
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState<Product | null>(null);
+  const emptyForm = { name: '', category: '', supplierId: '', numberOfSuppliers: '' as string | number, supplierIds: [] as string[] };
   const [form, setForm] = useState(emptyForm);
 
   const openNew = () => {
@@ -49,178 +47,197 @@ export default function Products() {
     setEditOpen(true);
   };
 
-  const openEdit = (p: any) => {
+  const openEdit = (p: Product) => {
     setEditing(p);
     setForm({ 
       name: p.name, 
-      category: p.category || '', 
-      // نحول الـ ID لنص فقط من أجل الـ Select Component
-      supplierId: p.supplierId ? String(p.supplierId) : '', 
-      price: String(p.price || '')
+      category: p.category, 
+      supplierId: p.supplierId,
+      numberOfSuppliers: p.numberOfSuppliers || (p.supplierIds?.length) || (p.supplierId ? 1 : ''),
+      supplierIds: p.supplierIds
+  ? p.supplierIds.map(id => String(id))
+  : (p.supplierId ? [String(p.supplierId)] : [])
     });
     setEditOpen(true);
   };
 
-  // 3. حفظ المنتج في PostgreSQL
-  const handleSave = async () => {
-    if (!form.name.trim()) { toast.error('Please enter a product name.'); return; }
-
-    const finalData = {
-      name: form.name,
-      category: form.category,
-      // تحويل لـ Number لأن PostgreSQL/Prisma تتوقع Int
-      supplierId: form.supplierId ? Number(form.supplierId) : null,
-      price: parseFloat(form.price) || 0
-    };
-
-    try {
-      if (editing) {
-        await axios.put(`http://localhost:5000/api/products/${editing.id}`, finalData);
-        toast.success(`"${form.name}" updated! ✨`);
-      } else {
-        await axios.post('http://localhost:5000/api/products', finalData);
-        toast.success(`"${form.name}" saved to PostgreSQL! 🚀`);
-      }
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      setEditOpen(false);
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.response?.data?.error || "Error saving product ❌");
-    }
+const handleSave = async () => {
+  if (!form.name.trim()) { toast.error('Please enter a product name.'); return; }
+  
+  const payload = {
+    ...form,
+    numberOfSuppliers: Number(form.numberOfSuppliers) || 0,
+    supplierIds: form.supplierIds.filter(id => id !== '').slice(0, Number(form.numberOfSuppliers) || 0),
   };
 
-  // 4. حذف المنتج
-  const handleDelete = async () => {
-    if (!deleting) return;
-    try {
-      await axios.delete(`http://localhost:5000/api/products/${deleting.id}`);
-      toast.success(`"${deleting.name}" removed.`);
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      setDeleteOpen(false);
-    } catch (err) {
-      toast.error("Failed to delete product");
+  try {
+    if (editing) {
+      await axios.put(`http://localhost:5000/api/products/${editing.id}`, payload);
+      toast.success(`"${form.name}" has been updated! ✨`);
+    } else {
+      await axios.post('http://localhost:5000/api/products', payload);
+      toast.success(`"${form.name}" has been added! 🎉`);
     }
-  };
+    queryClient.invalidateQueries({ queryKey: ['products'] });
+    setEditOpen(false);
+  } catch (error) {
+    toast.error('Failed to save product to database');
+  }
+};
 
-  if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
+ const handleDelete = async () => {
+  if (!deleting) return;
+  try {
+    await axios.delete(`http://localhost:5000/api/products/${deleting.id}`);
+    queryClient.invalidateQueries({ queryKey: ['products'] });
+    toast.success(`"${deleting.name}" has been removed.`);
+    setDeleteOpen(false);
+    setDeleting(null);
+  } catch (error) {
+    toast.error('Failed to delete product');
+  }
+};
+
+
+if (isLoading) return (
+  <div className="flex h-96 items-center justify-center">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+);
 
   return (
-    <div className="p-4">
-      <PageHeader 
-        title={t('common.products')} 
-        description="Catalog managed by PostgreSQL"
-        action={<Button onClick={openNew} size="lg"><Plus className="mr-2 h-4 w-4" /> {t('pages.addProduct', 'Add Product')}</Button>} 
-      />
+    <div>
+      <PageHeader title={t('common.products')} description={t('pages.productsDesc', 'Catalog of agricultural crops and commodities along with their standard pricing.')}
+        action={<Button onClick={openNew} size="lg"><Plus className="mr-2 h-4 w-4" /> {t('pages.addProduct', 'Add Product')}</Button>} />
 
-      <div className="overflow-x-auto rounded-xl bg-card border shadow-sm">
+      <div className="overflow-x-auto rounded-xl bg-card card-shadow">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/30">
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('Product')}</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('Category')}</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('Supplier')}</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">{t('Price')}</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">{t('Actions')}</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t('Product', 'Product')}</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden sm:table-cell">{t('Category', 'Category')}</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">{t('Supplier', 'Supplier')}</th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">{t('Actions', 'Actions')}</th>
             </tr>
           </thead>
           <tbody>
-            {products.map((p: any) => (
-              <tr key={p.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                <td className="px-4 py-3 font-medium flex items-center gap-2">
-                  <Wheat className="h-4 w-4 text-primary" /> {p.name}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{p.category || '—'}</td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {/* Prisma يرجع الكائن كـ supplier لو تم عمل include */}
-                  {p.supplier?.name || '—'} 
-                </td>
-                <td className="px-4 py-3 text-right font-mono">
-                  {p.price ? `${p.price.toFixed(2)} ${p.currency || 'USD'}` : '—'}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-1">
-                    <button onClick={() => openEdit(p)} className="rounded-md p-1.5 hover:bg-accent">
-                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                    <button onClick={() => { setDeleting(p); setDeleteOpen(true); }} className="rounded-md p-1.5 hover:bg-destructive/10">
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {products.map(p => {
+             const pSuppliers =
+  p.supplierIds && p.supplierIds.length > 0
+    ? p.supplierIds
+        .map(id =>
+          suppliers.find(
+            (s: any) => String(s.id) === String(id)
+          )?.name || 'Unknown'
+        )
+        .join(', ')
+    : (
+        suppliers.find(
+          (s: any) =>
+            String(s.id) === String(p.supplierId)
+        )?.name || '—'
+      );
+                
+              return (
+                <tr key={p.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Wheat className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-foreground">{p.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{p.category}</td>
+                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                    <div className="max-w-[200px] truncate" title={pSuppliers}>{pSuppliers}</div>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-1">
+                      <button onClick={() => openEdit(p)} className="rounded-md p-1.5 hover:bg-accent"><Pencil className="h-3.5 w-3.5 text-muted-foreground" /></button>
+                      <button onClick={() => { setDeleting(p); setDeleteOpen(true); }} className="rounded-md p-1.5 hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+        {products.length === 0 && (
+          <div className="p-12 text-center">
+            <Wheat className="mx-auto h-10 w-10 text-muted-foreground/50" />
+            <p className="mt-3 text-muted-foreground">No products yet. Add your first crop or product!</p>
+          </div>
+        )}
       </div>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editing ? t('Edit Product') : t('Add New Product')}</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            <div>
-              <Label>{t('Product Name')} *</Label>
-              <Input 
-                value={form.name} 
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} 
-                placeholder="e.g. Wheat Flour"
-              />
+          <DialogHeader><DialogTitle>{editing ? t('Edit Product', 'Edit Product') : t('pages.addProduct', 'Add New Product')}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>{t('Product Name *', 'Product Name *')}</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+              <div><Label>{t('Category', 'Category')}</Label><Input value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} /></div>
+            </div>
+            
+            <div className="border-t pt-4">
+              <Label>Number of Suppliers</Label>
+              <Input type="number" min="0" placeholder="Enter number..." value={form.numberOfSuppliers} onChange={e => {
+                const val = parseInt(e.target.value) || 0;
+                setForm(f => {
+                  const newIds = [...f.supplierIds];
+                  while (newIds.length < val) newIds.push('');
+                  return { ...f, numberOfSuppliers: val || '', supplierIds: newIds };
+                });
+              }} />
             </div>
 
-            <div>
-              <Label>{t('Category')}</Label>
-              <Input 
-                value={form.category} 
-                onChange={e => setForm(f => ({ ...f, category: e.target.value }))} 
-                placeholder="e.g. Grains"
-              />
-            </div>
+            {(Number(form.numberOfSuppliers) || 0) > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                {Array.from({ length: Number(form.numberOfSuppliers) || 0 }).map((_, idx) => (
+                  <div key={idx}>
+                    <Label className="text-xs">Supplier {idx + 1}</Label>
+ {}
+<Select
+  value={form.supplierIds[idx] ? String(form.supplierIds[idx]) : ""}
+  onValueChange={(v) => {
+    setForm(f => {
+      const newIds = [...f.supplierIds];
+      newIds[idx] = v;
+      return { ...f, supplierIds: newIds };
+    });
+  }}
+>
+  <SelectTrigger>
+    <SelectValue placeholder={suppliers.length > 0 ? "Select supplier..." : "No suppliers found"} />
+  </SelectTrigger>
 
-            <div>
-              <Label>{t('Price')}</Label>
-              <Input 
-                type="number"
-                value={form.price} 
-                onChange={e => setForm(f => ({ ...f, price: e.target.value }))} 
-                placeholder="0.00"
-              />
-            </div>
-
-            <div>
-              <Label>{t('Supplier')}</Label>
-              <Select 
-                value={form.supplierId} 
-                onValueChange={v => setForm(f => ({ ...f, supplierId: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t('Select supplier...')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((s: any) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+  <SelectContent>
+    {suppliers.length > 0 ? (
+      suppliers.map((s: any) => (
+        <SelectItem key={s.id} value={String(s.id)}>
+          {s.name}
+        </SelectItem>
+      ))
+    ) : (
+      <div className="p-2 text-sm text-center text-muted-foreground">
+        No suppliers found in system
+      </div>
+    )}
+  </SelectContent>
+</Select>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSave}>{t('common.save')}</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t('Cancel', 'Cancel')}</Button>
+            <Button onClick={handleSave}>{editing ? t('Save Changes', 'Save Changes') : t('pages.addProduct', 'Add Product')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <DeleteConfirmDialog 
-        open={deleteOpen} 
-        onOpenChange={setDeleteOpen} 
-        onConfirm={handleDelete} 
-        itemName={deleting?.name || ''} 
-      />
+      <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={handleDelete} itemName={deleting?.name || ''} />
     </div>
   );
 }
+

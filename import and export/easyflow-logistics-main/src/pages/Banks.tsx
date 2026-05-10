@@ -19,7 +19,6 @@ export default function Banks() {
   const [transactions, setTransactions] = useState<Transaction[]>(() => getTransactions());
   const [bankBalancesState, setBankBalancesState] = useState<BankBalances>(() => getBankBalances());
   
-  // Extract only banks that have at least one transaction or a balance profile
   const bankNames = useMemo(() => {
     const banksInUse = new Set<string>();
     transactions.forEach(t => {

@@ -2,74 +2,103 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { PrismaClient } = require('@prisma/client');
-
 const prisma = new PrismaClient();
 
-// إعداد multer (يفضل استخدام نفس إعدادات server.js لتوحيد الأسماء)
-const storage = multer.diskStorage({
-    destination: './uploads/',
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
-    }
-});
-const upload = multer({ storage });
+const upload = multer({ dest: 'uploads/' });
 
-// 1. إضافة سجل جديد (POST)
-router.post('/', upload.single('pdfFile'), async (req, res) => {
+
+router.post('/', upload.single('file'), async (req, res) => {
     try {
         const data = req.body;
-        const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
+        const fileUrl = req.file ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` : null;
 
-        const newRecord = await prisma.shippingAgentRecord.create({
+        const newAgent = await prisma.shippingAgent.create({
             data: {
-                // تحويل الـ IDs لأرقام لأن Postgres بيرفض الـ String في خانة الـ Int
-                agentId: parseInt(data.agentId), 
-                date: new Date(data.date), 
-                // التعامل مع الـ jobId بحذر
-                jobId: (data.jobId === 'none' || !data.jobId) ? null : parseInt(data.jobId),
-                blNumber: data.blNumber || '',
-                country: data.country || '',
-                containerCount: parseInt(data.containerCount) || 0,
-                costEgp: parseFloat(data.costEgp) || 0,
-                costEgpNote: data.costEgpNote || '',
-                costEuro: parseFloat(data.costEuro) || 0,
-                costEuroNote: data.costEuroNote || '',
-                costUsd: parseFloat(data.costUsd) || 0,
-                costUsdNote: data.costUsdNote || '',
-                pdfUrl: fileUrl, 
+                name: data.name,
+                company: data.company || null,
+                address: data.address || null,
+                telephone: data.telephone || null,
+                personalNumber: data.personalNumber || null,
+                email: data.email || null,
+                attachmentUrl: fileUrl
             }
         });
-
-        res.status(201).json(newRecord);
+        res.status(201).json(newAgent);
     } catch (error) {
-        console.error("Error creating record:", error);
+        console.error("Create Agent Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
 
-// 2. جلب السجلات (GET)
 router.get('/', async (req, res) => {
     try {
-        const records = await prisma.shippingAgentRecord.findMany({
-            orderBy: { date: 'desc' }
+        const agents = await prisma.shippingAgent.findMany({
+            orderBy: { id: 'desc' }
         });
-        res.json(records);
+        res.json(agents);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// 3. حذف سجل (DELETE)
+
+
+router.put('/:id', upload.single('file'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const data = req.body;
+        
+        const updateData = {
+            name: data.name,
+            company: data.company || null,
+            address: data.address || null,
+            telephone: data.telephone || null,
+            personalNumber: data.personalNumber || null,
+            email: data.email || null,
+        };
+
+        if (req.file) {
+            updateData.attachmentUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        }
+
+        const updated = await prisma.shippingAgent.update({
+            where: { id: parseInt(id) },
+            data: updateData
+        });
+        res.json(updated);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// التعديل في الباك إند (shippingAgentRoutes.js)
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        await prisma.shippingAgentRecord.delete({
-            where: { id: parseInt(id) } // تحويل الـ ID لـ Integer
+        const numericId = parseInt(id);
+
+        // 1. نتحقق أولاً هل السجل موجود؟
+        const record = await prisma.shippingAgent.findUnique({
+            where: { id: numericId }
         });
-        res.json({ success: true, message: "Record deleted successfully" });
+
+        // 2. لو مش موجود (اتمسح فعلاً)، نرد بنجاح "Success" عشان الفرونت إند يسكت
+        if (!record) {
+            return res.status(200).json({ success: true, message: "Already deleted" });
+        }
+
+        // 3. لو موجود، نمسحه
+        await prisma.shippingAgent.delete({
+            where: { id: numericId }
+        });
+
+        res.status(200).json({ success: true });
     } catch (error) {
-        console.error("Delete Error:", error);
-        res.status(500).json({ error: error.message });
+        console.error(error);
+        res.status(500).json({ error: "Server Error" });
     }
 });
+
+module.exports = router;

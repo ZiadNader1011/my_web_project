@@ -1,6 +1,4 @@
-const prisma = require('../lib/prisma'); // تأكدي إن المسار صح
-
-// 1. جلب كل الوظائف
+const prisma = require('../lib/prisma');  
 exports.getAllJobs = async (req, res) => {
     try {
         const jobs = await prisma.job.findMany({
@@ -10,7 +8,7 @@ exports.getAllJobs = async (req, res) => {
                 shippingRecords: true,
                 products: {
                     include: {
-                        product: true // عشان يجيب تفاصيل المنتج (الاسم والفئة) من جدول الـ Product
+                        product: true 
                     }
                 }
             },
@@ -23,20 +21,28 @@ exports.getAllJobs = async (req, res) => {
     }
 };
 
-// 2. إنشاء وظيفة جديدة (المعدل ليتوافق مع الـ Schema)
 exports.createJob = async (req, res) => {
     try {
         const data = req.body;
 
-        // 1. التأكد من أن رقم العملية ليس مكرراً (التحقق الاستباقي)
         if (data.jobNumber) {
             const existingJob = await prisma.job.findUnique({
                 where: { jobNumber: data.jobNumber }
             });
             if (existingJob) {
-                return res.status(400).json({ error: "رقم العملية (Job Number) موجود بالفعل، يرجى استخدام رقم آخر." });
+                return res.status(400).json({ error: "رقم العملية موجود بالفعل." });
             }
         }
+
+        const validProducts = (data.products || [])
+            .filter(p => p.productId && p.productId !== 'none' && !isNaN(Number(p.productId)))
+            .map(p => ({
+                productId: Number(p.productId),
+                quantity: parseFloat(p.quantity) || 1,
+                unitPrice: parseFloat(p.unitPrice) || 0,
+                currency: p.currency || data.currency || "USD",
+                variety: p.variety || null
+            }));
 
         const newJob = await prisma.job.create({
             data: {
@@ -52,14 +58,9 @@ exports.createJob = async (req, res) => {
                 rawMaterialPricePerTon: parseFloat(data.rawMaterialPricePerTon) || 0,
                 rawMaterialWeight: parseFloat(data.rawMaterialWeight) || 0,
                 pettyCash: parseFloat(data.pettyCash) || 0,
+               
                 products: {
-                    create: data.products?.map(p => ({
-                        productId: Number(p.productId),
-                        quantity: parseFloat(p.quantity) || 1,
-                        unitPrice: parseFloat(p.unitPrice) || 0,
-                        currency: p.currency || "USD",
-                        variety: p.variety || null
-                    }))
+                    create: validProducts
                 }
             },
             include: { products: true }
@@ -68,11 +69,11 @@ exports.createJob = async (req, res) => {
         res.status(201).json(newJob);
     } catch (error) {
         console.error("Create Job Error:", error);
-        res.status(500).json({ error: "حدث خطأ أثناء إنشاء العملية: " + error.message });
+        res.status(500).json({ error: "خطأ في قاعدة البيانات: تأكد من صحة معرفات المنتجات والعملاء." });
     }
 };
 
-// 3. تحديث الوظيفة
+
 exports.updateJob = async (req, res) => {
     try {
         const { id } = req.params;
@@ -92,7 +93,7 @@ exports.updateJob = async (req, res) => {
                 rawMaterialWeight: parseFloat(data.rawMaterialWeight) || 0,
                 pettyCash: parseFloat(data.pettyCash) || 0,
 
-                // تحديث المنتجات: نمسح الربط القديم ونعمل ربط جديد
+              
                 products: {
                     deleteMany: {}, 
                     create: data.products?.map(p => ({

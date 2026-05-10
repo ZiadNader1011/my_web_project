@@ -9,11 +9,17 @@ const multer = require('multer');
 // 1. استيراد الـ Routes (لازم يكون فوق قبل الاستخدام)
 const supplierRoutes = require('./routes/supplierRoutes');
 const jobRoutes = require('./routes/jobRoutes');
-const shippingAgentRoutes = require('./routes/shippingAgentRoutes'); 
 const clientRoutes = require('./routes/clientRoutes');
 const productRoutes = require('./routes/productRoutes');
 const containerRoutes = require('./routes/containerRoutes');
 const packingListRoutes = require('./routes/packingListRoutes');
+const shippingAgentRoutes = require('./routes/shippingAgentRoutes'); // للوكلاء
+const shippingAgentRecordRoutes = require('./routes/shippingAgentRecordRoutes'); // للسجلات
+const employeeRoutes = require('./routes/employeeRoutes');
+const commissionRoutes = require('./routes/commissionRoutes');
+const operationRoutes = require('./routes/operationRoutes');
+const financialRoutes = require('./routes/financialRoutes');
+
 
 // 2. إعداد مجلد الرفع
 const uploadDir = './uploads/';
@@ -32,6 +38,7 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 } 
 });
 
+
 const app = express();
 
 // 3. Middlewares
@@ -43,11 +50,18 @@ app.use('/uploads', express.static('uploads'));
 // 4. استخدام الـ Routes
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/jobs', jobRoutes);
-app.use('/api/shipping-agent-records', shippingAgentRoutes); 
 app.use('/api/clients', clientRoutes);
 app.use('/api/products', productRoutes);
-app.use('/api/containers', containerRoutes); // تم نقل السطر هنا بعد التعريف
+app.use('/api/containers', containerRoutes); 
 app.use('/api/packing-lists', packingListRoutes);
+app.use('/api/shipping-agents', shippingAgentRoutes); 
+app.use('/api/shipping-agent-records', shippingAgentRecordRoutes);
+app.use('/api/employees', employeeRoutes);
+app.use('/api/commissions', commissionRoutes);
+app.use('/api/operations', operationRoutes);
+app.use('/api/transactions', financialRoutes);
+
+
 
 // 5. مسار الرفع المباشر
 app.post('/api/upload', upload.single('file'), (req, res) => {

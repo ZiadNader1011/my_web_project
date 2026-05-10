@@ -9,12 +9,27 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2, Users, Phone, Briefcase, DollarSign, Printer } from 'lucide-react';
 import { toast } from 'sonner';
+import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 
 export default function Employees() {
+  const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const [employees, setEmployees] = useState<Employee[]>(getEmployees);
-  const transactions = useMemo(() => getTransactions(), []);
-
+  const { data: employees = [], isLoading: loadingEmps } = useQuery({
+    queryKey: ['employees'],
+    queryFn: async () => {
+      const res = await axios.get('http://localhost:5000/api/employees');
+      return res.data;
+    }
+  });
+  const { data: transactions = [], isLoading: loadingTrans } = useQuery({
+    queryKey: ['transactions'],
+    queryFn: async () => {
+      const res = await axios.get('http://localhost:5000/api/transactions');
+      return res.data;
+    }
+  });
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
@@ -33,38 +48,45 @@ export default function Employees() {
     setEditOpen(true);
   };
 
-  const handleSave = () => {
-    if (!form.name) {
-      toast.error('Name is required');
-      return;
-    }
-    const empData: Employee = {
-      ...form,
-      id: editing ? editing.id : generateId(),
-    };
-    
-    let updated;
+const handleSave = async () => {
+  if (!form.name) {
+    toast.error('Name is required');
+    return;
+  }
+
+  try {
     if (editing) {
-      updated = employees.map(e => e.id === editing.id ? empData : e);
+      await axios.put(`http://localhost:5000/api/employees/${editing.id}`, form);
       toast.success('Employee updated successfully');
     } else {
-      updated = [...employees, empData];
+      await axios.post('http://localhost:5000/api/employees', form);
       toast.success('Employee added successfully');
     }
-    
-    setEmployees(updated);
-    saveEmployees(updated);
+    queryClient.invalidateQueries({ queryKey: ['employees'] });
     setEditOpen(false);
-  };
+  } catch (error) {
+    console.error(error);
+    toast.error('Failed to save employee');
+  }
+};
 
-  const handleDelete = () => {
-    if (!deleting) return;
-    const updated = employees.filter(e => e.id !== deleting.id);
-    setEmployees(updated);
-    saveEmployees(updated);
+const handleDelete = async () => {
+  if (!deleting) return;
+  try {
+    await axios.delete(`http://localhost:5000/api/employees/${deleting.id}`);
+    queryClient.invalidateQueries({ queryKey: ['employees'] });
     toast.success('Employee removed');
+    setDeleteOpen(false);
     setDeleting(null);
-  };
+  } catch (error) {
+    toast.error('Delete failed');
+  }
+};
+if (loadingEmps || loadingTrans) return (
+  <div className="flex h-96 items-center justify-center">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+);
 
   return (
     <div className="pb-10">

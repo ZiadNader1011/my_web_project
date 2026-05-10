@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Plus, Pencil, Trash2, Users, Globe, Mail, User, Package, Receipt, Phone, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// الرابط الأساسي للسيرفر
 const API_BASE_URL = 'http://localhost:5000/api/suppliers';
 
 export default function Suppliers() {
@@ -20,7 +19,6 @@ export default function Suppliers() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // 1. جلب الموردين (تعديل الرابط)
   const { data: suppliers = [], isLoading } = useQuery({
     queryKey: ['suppliers'],
     queryFn: async () => {
@@ -29,11 +27,11 @@ export default function Suppliers() {
     }
   });
 
-  // جلب المنتجات (تعديل الرابط لو بورت 5000)
+
   const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: async () => {
-      const res = await axios.get('http://localhost:5000/api/products'); // تأكد من المسار في السيرفر
+      const res = await axios.get('http://localhost:5000/api/products'); 
       return res.data;
     }
   });
@@ -51,6 +49,7 @@ export default function Suppliers() {
   };
 
   const openEdit = (s: any) => {
+    console.log("EDITING SUPPLIER => ", s);
     setEditing(s);
     setForm({ 
       name: s.name, 
@@ -58,47 +57,51 @@ export default function Suppliers() {
       contact: s.contact || '', 
       email: s.email || '', 
       phone: s.phone || '', 
-      product: s.agentName || '' // ربطنا الحقل بـ agentName الموجود في السيرفر
+      product: s.product || ''
     });
     setEditOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!form.name.trim() || !form.country.trim()) { 
-      toast.error('Please fill in required fields (Name & Country).'); 
-      return; 
+const handleSave = async () => {
+  if (!form.name.trim() || !form.country.trim()) { 
+    toast.error('Please fill in required fields.'); 
+    return; 
+  }
+  
+  try {
+    if (editing) {
+      await axios.put(`${API_BASE_URL}/${editing.id}`, form);
+      toast.success(`"${form.name}" updated! ✨`);
+    } else {
+      await axios.post(API_BASE_URL, form);
+      toast.success(`"${form.name}" saved! 🎉`);
     }
-    
-    try {
-      if (editing) {
-        // تعديل مورد: http://localhost:5000/api/suppliers/:id
-        await axios.put(`${API_BASE_URL}/${editing.id}`, form);
-        toast.success(`"${form.name}" updated! ✨`);
-      } else {
-        // إضافة مورد: http://localhost:5000/api/suppliers
-        await axios.post(API_BASE_URL, form);
-        toast.success(`"${form.name}" saved to Database! 🎉`);
-      }
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      setEditOpen(false);
-    } catch (error: any) {
-      console.error("Save Error:", error);
-      toast.error(error.response?.data?.error || "Server Error ❌");
-    }
-  };
+    queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+    setEditOpen(false);
+  } catch (error: any) {
+    console.error("Save Error:", error.response?.data);
+    toast.error(error.response?.data?.error || "Server Error ❌");
+  }
+};
 
-  const handleDelete = async () => {
-    if (!deleting) return;
-    try {
-      // حذف مورد: http://localhost:5000/api/suppliers/:id
-      await axios.delete(`${API_BASE_URL}/${deleting.id}`);
-      toast.success("Supplier removed.");
-      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
-      setDeleteOpen(false);
-    } catch (error) {
-      toast.error("Failed to delete ❌");
-    }
-  };
+const handleDelete = async () => {
+  if (!deleting) return;
+  try {
+    await axios.delete(`${API_BASE_URL}/${deleting.id}`);
+    
+  
+    setDeleteOpen(false); 
+    setDeleting(null);
+
+    toast.success("Supplier removed");
+
+  
+    queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+  } catch (error) {
+    setDeleteOpen(false);
+    queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+  }
+};
 
   if (isLoading) return <div className="flex justify-center p-20"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
 
@@ -112,9 +115,17 @@ export default function Suppliers() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-6">
         {suppliers.map((s: any) => {
-          const supplierProductsCount = products.filter((p: any) => 
-            (p.supplierId === s.id) || (p.supplierId?.id === s.id) 
-          ).length;
+          const supplierProductsCount = products.filter((p: any) => {
+
+  if (Array.isArray(p.supplierIds)) {
+    return p.supplierIds.some(
+      (id: any) => String(id) === String(s.id)
+    );
+  }
+
+  return String(p.supplierId) === String(s.id);
+
+}).length;
 
           return (
             <div key={s.id} className="rounded-xl bg-card p-5 border shadow-sm hover:shadow-md transition-all">

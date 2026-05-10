@@ -2,8 +2,7 @@ import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
-import { getCommissions, saveCommissions, generateId, Commission, formatDate, formatCurrency } from '@/data/store';
-import { compressImage } from '@/utils/imageCompression';
+import {  Commission, formatDate, formatCurrency } from '@/data/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,11 +12,22 @@ import { DatePicker } from '@/components/DatePicker';
 import { FileViewer } from '@/components/FileViewer';
 import { Plus, Pencil, Trash2, FileText, Calendar, Camera, Briefcase, UserCircle, Calculator } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
 
 export default function Commissions() {
-  const { t } = useTranslation();
-  const [commissions, setCommissions] = useState<Commission[]>(getCommissions);
+  const queryClient = useQueryClient();
 
+const { data: commissions = [], isLoading } = useQuery({
+  queryKey: ['commissions'],
+  queryFn: async () => {
+    const res = await axios.get('http://localhost:5000/api/commissions');
+    return res.data;
+  }
+});
+
+const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const { t } = useTranslation();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<Commission | null>(null);
@@ -46,51 +56,50 @@ export default function Commissions() {
     setEditOpen(true);
   };
 
-  const openEdit = (c: Commission) => {
+ const openEdit = (c: Commission) => {
     setEditing(c);
+    
+    setSelectedFiles([]); 
+
     setForm({ 
-      date: c.date, 
+      date: c.date ? new Date(c.date).toISOString().split('T')[0] : '', 
+      
       clientName: c.clientName, 
       numberOfContainers: c.numberOfContainers, 
       totalQuantityTon: c.totalQuantityTon, 
       commissionPerTon: c.commissionPerTon, 
       currency: c.currency,
-      product: c.product,
-      trader: c.trader,
+      product: c.product || '',
+      trader: c.trader || '',
       qualityRepresentative: c.qualityRepresentative || '',
-      attachments: [...(c.attachments || [])] 
+      
+      attachments: Array.isArray(c.attachments) ? [...c.attachments] as any[] : []
     });
+    
     setEditOpen(true);
-  };
+};
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('File too large. Maximum size is 5MB.');
-        return;
-      }
-      
-      const isImage = file.type.startsWith('image/');
-      let url = '';
-      
-      if (isImage) {
-        url = await compressImage(file);
-      } else {
-        url = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => resolve(ev.target?.result as string);
-          reader.readAsDataURL(file);
-        });
-      }
+const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  if (e.target.files && e.target.files[0]) {
+    const file = e.target.files[0];
+    
+    setSelectedFiles(prev => [...prev, file]);
 
-      setForm(f => ({
-        ...f,
-        attachments: [...f.attachments, { id: generateId(), url, description: '', createdAt: new Date().toISOString() }]
-      }));
-    }
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+
+    setForm(f => ({
+      ...f,
+      attachments: [
+        ...f.attachments, 
+        { 
+          id: Math.random().toString(), 
+          url: URL.createObjectURL(file), 
+          description: file.name,
+          createdAt: new Date().toISOString() 
+        }
+      ]
+    }));
+  }
+};
 
   const removeAttachment = (index: number) => {
     setForm(f => ({
@@ -99,44 +108,69 @@ export default function Commissions() {
     }));
   };
 
-  const handleSave = () => {
-    const totalQty = Number(form.totalQuantityTon) || 0;
-    const commPerTon = Number(form.commissionPerTon) || 0;
+const handleSave = async () => {
+  const formData = new FormData();
 
-    const cData: Commission = {
-      ...form,
-      numberOfContainers: Number(form.numberOfContainers) || 0,
-      totalQuantityTon: totalQty,
-      commissionPerTon: commPerTon,
-      id: editing ? editing.id : generateId(),
-    };
-    
-    let updated;
+  formData.append('date', form.date);
+  formData.append('clientName', form.clientName);
+  formData.append('trader', form.trader);
+  formData.append('product', form.product);
+  formData.append('qualityRepresentative', form.qualityRepresentative);
+  formData.append('currency', form.currency);
+  formData.append('numberOfContainers', String(form.numberOfContainers || 0));
+  formData.append('totalQuantityTon', String(form.totalQuantityTon || 0));
+  formData.append('commissionPerTon', String(form.commissionPerTon || 0));
+
+
+  const oldAttachments = form.attachments.filter(att => !att.url.startsWith('blob:'));
+  formData.append('attachments', JSON.stringify(oldAttachments));
+
+  
+  selectedFiles.forEach((file) => {
+    formData.append('attachments', file);
+  });
+
+  try {
     if (editing) {
-      updated = commissions.map(p => p.id === editing.id ? cData : p);
-      toast.success('Commission updated successfully');
+      await axios.put(`http://localhost:5000/api/commissions/${editing.id}`, formData);
+      toast.success('Updated successfully');
     } else {
-      updated = [...commissions, cData];
-      toast.success('Commission created successfully');
+      await axios.post('http://localhost:5000/api/commissions', formData);
+      toast.success('Created successfully');
     }
-    
-    updated.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    setCommissions(updated);
-    saveCommissions(updated);
+
+    queryClient.invalidateQueries({ queryKey: ['commissions'] });
+    setSelectedFiles([]);
     setEditOpen(false);
-  };
+  } catch (error) {
+    toast.error('Failed to save to database');
+  }
+};
 
-  const handleDelete = () => {
-    if (!deleting) return;
-    const updated = commissions.filter(p => p.id !== deleting.id);
-    setCommissions(updated);
-    saveCommissions(updated);
-    toast.success('Commission removed');
+const handleDelete = async () => {
+  if (!deleting) return;
+
+  try {
+    
+    await axios.delete(`http://localhost:5000/api/commissions/${deleting.id}`);
+    
+    
+    setDeleteOpen(false);
+   
+    await queryClient.invalidateQueries({ queryKey: ['commissions'] });
+    
+    
     setDeleting(null);
-  };
 
-  // Live calculation for the form
+    toast.success(t('Commission removed'));
+
+  } catch (error) {
+    console.error("Delete Error:", error);
+    toast.error('Delete failed'); 
+  }
+};
+
+
   const formTotalCommission = (Number(form.totalQuantityTon) || 0) * (Number(form.commissionPerTon) || 0);
 
   return (
@@ -198,7 +232,7 @@ export default function Commissions() {
                     <span className="font-mono bg-accent px-2 py-0.5 rounded text-xs border">
                       {c.totalQuantityTon} tons
                     </span>
-                    <span className="text-muted-foreground text-xs">×</span>
+                    <span className="text-muted-foreground text-xs mx-1"> x </span>
                     <span className="font-mono bg-accent px-2 py-0.5 rounded text-xs border">
                       {formatCurrency(c.commissionPerTon, c.currency)} / ton
                     </span>
@@ -209,7 +243,7 @@ export default function Commissions() {
                       <div className="flex gap-2 flex-wrap">
                         {c.attachments.map((att) => (
                           <div 
-                            key={att.id} 
+                            key={att._id} 
                             onClick={() => setViewingFile(att.url)}
                             className="flex items-center gap-1.5 border rounded-md px-2.5 py-1.5 text-xs cursor-pointer hover:bg-accent transition-colors"
                           >

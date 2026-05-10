@@ -1,13 +1,25 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// 1. جلب كل المنتجات مع بيانات المورد الخاص بكل منتج
+exports.getAllSuppliers = async (req, res) => {
+  try {
+    const suppliers = await prisma.supplier.findMany({
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    res.json(suppliers);
+
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch suppliers'
+    });
+  }
+};
 exports.getAllProducts = async (req, res) => {
   try {
     const products = await prisma.product.findMany({
-      include: {
-        supplier: true // عشان يعرض اسم المورد في الجدول
-      },
       orderBy: { createdAt: 'desc' }
     });
     res.json(products);
@@ -16,39 +28,40 @@ exports.getAllProducts = async (req, res) => {
   }
 };
 
-// 2. إضافة منتج جديد
 exports.createProduct = async (req, res) => {
   try {
-    const { name, category, price, supplierId } = req.body;
+    const { name, category, supplierIds, numberOfSuppliers } = req.body;
+
     const newProduct = await prisma.product.create({
       data: {
         name,
         category,
-        price: parseFloat(price) || 0,
-        supplierId: supplierId ? Number(supplierId) : null,
+        numberOfSuppliers: parseInt(numberOfSuppliers) || 0,
+        supplierId: supplierIds && supplierIds.length > 0 ? parseInt(supplierIds[0]) : null,
+        supplierIds: Array.isArray(supplierIds) ? supplierIds.map(id => parseInt(id)) : []
       }
     });
     res.status(201).json(newProduct);
   } catch (error) {
+    console.error("PRISMA ERROR:", error); // هذا السطر سيظهر لك السبب الحقيقي في الـ Terminal
     res.status(400).json({ error: error.message });
   }
 };
 
-// 3. تحديث منتج
 exports.updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, category, price, supplierId } = req.body;
+    const { name, category, numberOfSuppliers, supplierIds } = req.body;
     
     const updatedProduct = await prisma.product.update({
       where: { id: Number(id) },
-      data: {
-        // نستخدم "undefined" لو الحقل مجاش، عشان بريسما متحدثوش وتديله قيمة قديمة
-        name: name !== undefined ? name : undefined,
-        category: category !== undefined ? category : undefined,
-        price: price !== undefined ? parseFloat(price) : undefined,
-        supplierId: supplierId !== undefined ? (supplierId ? Number(supplierId) : null) : undefined,
-      }
+   data: {
+  name: name !== undefined ? name : undefined,
+  category: category !== undefined ? category : undefined,
+  numberOfSuppliers: numberOfSuppliers !== undefined ? parseInt(numberOfSuppliers) : undefined,
+  supplierIds: supplierIds !== undefined ? supplierIds.map(id => parseInt(id)) : undefined,
+  supplierId: (supplierIds && supplierIds.length > 0) ? parseInt(supplierIds[0]) : undefined,
+}
     });
     res.json(updatedProduct);
   } catch (error) {
@@ -56,7 +69,7 @@ exports.updateProduct = async (req, res) => {
   }
 };
 
-// 4. حذف منتج
+
 exports.deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;

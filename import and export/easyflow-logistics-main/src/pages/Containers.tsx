@@ -1,60 +1,80 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import {
-  getContainers, saveContainers, getProducts, generateId,
-  Container, ContainerProduct, formatDate
+  Container,
+  ContainerProduct,
+  formatDate,
+  generateId
 } from '@/data/store';
-
+import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { DatePicker } from '@/components/DatePicker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Ship, Package, Camera, FileText } from 'lucide-react';
+import { Plus, Pencil, Trash2, Ship, MapPin, Package, Calendar, Anchor, Camera, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { FileViewer } from '@/components/FileViewer';
 
 const statusColors: Record<string, string> = {
-  loading: 'bg-yellow-500/10 text-yellow-600 border-yellow-200',
-  'in-transit': 'bg-blue-500/10 text-blue-600 border-blue-200',
-  arrived: 'bg-green-500/10 text-green-600 border-green-200',
-  cleared: 'bg-gray-500/10 text-gray-600 border-gray-200',
+  loading: 'bg-warning/10 text-warning border-warning/20',
+  'in-transit': 'bg-info/10 text-info border-info/20',
+  arrived: 'bg-success/10 text-success border-success/20',
+  cleared: 'bg-muted text-muted-foreground border-border',
 };
 
 const statusIcons: Record<string, string> = {
-  loading: '📦',
-  'in-transit': '🚢',
-  arrived: '✅',
-  cleared: '🏁',
+  loading: '📦 ',
+  'in-transit': '🚢 ',
+  arrived: '✅ ',
+  cleared: '🏁 ',
 };
 
 export default function Containers() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
 
-  const [containers, setContainers] = useState<Container[]>(() => getContainers());
-  const products = useMemo(() => getProducts(), []);
 
+
+const formatDateForInput = (dateStr: any) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
+};
+
+const { data: containers = [], isLoading } = useQuery({
+  queryKey: ['containers'],
+  queryFn: async () => {
+    const res = await axios.get('http://localhost:5000/api/containers');
+    return res.data;
+  }
+});
+const { data: products = [], isLoading: productsLoading } = useQuery({
+  queryKey: ['products'],
+  queryFn: async () => {
+    const res = await axios.get('http://localhost:5000/api/products');
+    console.log("PRODUCTS API => ", res.data);
+    return Array.isArray(res.data) ? res.data : [];
+  }
+});
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<Container | null>(null);
   const [deleting, setDeleting] = useState<Container | null>(null);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const emptyForm = {
-    containerNumber: '',
-    sourcePort: '',
-    destinationPort: '',
-    shippingDate: '',
-    arrivalDate: '',
-    status: 'loading' as Container['status'],
+    containerNumber: '', sourcePort: '', destinationPort: '',
+    shippingDate: '', arrivalDate: '', status: 'loading' as Container['status'],
     products: [] as ContainerProduct[],
     attachments: [] as { id: string; url: string; description: string; createdAt: string }[],
   };
-
   const [form, setForm] = useState(emptyForm);
 
   const openNew = () => {
@@ -64,304 +84,409 @@ export default function Containers() {
   };
 
   const openEdit = (c: Container) => {
+    console.log("EDIT CONTAINER => ", c);
     setEditing(c);
     setForm({
-      containerNumber: c.containerNumber || '',
-      sourcePort: c.sourcePort || '',
-      destinationPort: c.destinationPort || '',
-      shippingDate: c.shippingDate || '',
-      arrivalDate: c.arrivalDate || '',
-      status: c.status || 'loading',
-      products: c.products || [],
-      attachments: c.attachments || [],
-    });
-    setEditOpen(true);
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await fetch("http://localhost:5000/upload", {
-        method: "POST",
-        body: formData
-      });
-
-      const data = await res.json();
-
-      setForm(f => ({
-        ...f,
-        attachments: [
-          ...f.attachments,
-          {
-            id: generateId(),
-            url: data.url,
-            description: file.name,
-            createdAt: new Date().toISOString()
-          }
-        ]
-      }));
-
-      toast.success("File uploaded");
-    } catch {
-      toast.error("Upload failed");
-    }
-  };
-
-  const addProductToForm = () => {
-  setForm(f => ({
-    ...f,
-    products: [
-      ...f.products,
-      { productId: '', quantity: 1, packages: 1, netWeight: 0, grossWeight: 0 } as any
-    ]
-  }));
-};
-
-const removeProductFromForm = (index: number) => {
-  setForm(f => ({
-    ...f,
-    products: f.products.filter((_, i) => i !== index)
-  }));
-};
-
-const updateProductInForm = (index: number, field: string, value: any) => {
-  const newProducts = [...form.products];
-  newProducts[index] = { ...newProducts[index], [field]: value };
-  setForm(f => ({ ...f, products: newProducts }));
-}
-
-  const handleSave = async () => {
-    if (!form.containerNumber.trim()) {
-      toast.error("Container number required");
-      return;
-    }
-    if (form.products.some(p => !p.productId)) {
-    toast.error("Please select a product for all items");
-    return;
-  }
-
- const payload = {
-    ...form,
-    id: editing?.id,
-    products: form.products.map(p => ({
-      ...p,
+      containerNumber: c.containerNumber, sourcePort: c.sourcePort,
+      destinationPort: c.destinationPort, shippingDate: formatDateForInput(c.shippingDate),
+      arrivalDate: formatDateForInput(c.arrivalDate),status: c.status,
+products: c.products
+  ? c.products.map((p: any) => ({
+      productId: String(
+        p.productId ||
+        p.product?.id ||
+        ''
+      ),
       quantity: Number(p.quantity) || 0,
       packages: Number(p.packages) || 0,
       netWeight: Number(p.netWeight) || 0,
       grossWeight: Number(p.grossWeight) || 0,
+      packageType: p.packageType || '',
+      unit: p.unit || 'KG'
     }))
+  : [],
+    attachments: c.attachments ? [...c.attachments] : [],
+  });
+  setEditOpen(true);
+};
+
+  const addProduct = () => {
+  setForm(f => ({
+    ...f,
+    products: [
+      ...f.products,
+      {
+        productId: '', 
+        quantity: 0,
+        packages: 0,
+        netWeight: 0,
+        grossWeight: 0,
+        packageType: '',
+        unit: 'KG'
+      }
+    ]
+  }));
+};
+
+  const updateProduct = (i: number, field: string, value: string | number) => {
+    setForm(f => {
+      const prods = [...f.products];
+      prods[i] = { ...prods[i], [field]: value };
+      return { ...f, products: prods };
+    });
   };
+
+  const removeProduct = (i: number) => {
+    setForm(f => ({ ...f, products: f.products.filter((_, idx) => idx !== i) }));
+  };
+
+ const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  if (e.target.files && e.target.files[0]) {
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
 
     try {
-      const res = await fetch("http://localhost:5000/api/containers", {
-        method: editing ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+      const res = await axios.post('http://localhost:5000/api/containers/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
-
-      if (!res.ok) throw new Error();
-
-      const updated = await fetch("http://localhost:5000/api/containers")
-        .then(r => r.json());
-
-      setContainers(updated);
-      setEditOpen(false);
-
-      toast.success("Saved successfully");
-    } catch {
-      toast.error("Save failed");
+      setForm(f => ({
+        ...f,
+        attachments: [...(f.attachments || []), { 
+          id: generateId(), 
+          url: res.data.url, 
+          description: file.name, 
+          createdAt: new Date().toISOString() 
+        }]
+      }));
+      toast.success('File uploaded successfully');
+    } catch (err) {
+      toast.error('Upload failed');
     }
+  }
+};
+
+  const removeAttachment = (index: number) => {
+    setForm(f => ({
+      ...f,
+      attachments: (f.attachments || []).filter((_, i) => i !== index)
+    }));
   };
 
-  const handleDelete = useCallback(async () => {
-    if (!deleting) return;
+const handleSave = async () => {
+  if (!form.containerNumber.trim()) {
+    toast.error('Please enter a container number.');
+    return;
+  }
 
-    await fetch(`http://localhost:5000/api/containers/${deleting.id}`, {
-      method: "DELETE"
+  try {
+    const payload = {
+      ...form,
+      // تحويل التواريخ في مستوى الحاوية وليس داخل المنتجات ✅
+      shippingDate: form.shippingDate ? new Date(form.shippingDate).toISOString() : null,
+      arrivalDate: form.arrivalDate ? new Date(form.arrivalDate).toISOString() : null,
+      
+      products: (form.products || []).map(p => ({
+        productId: parseInt(String(p.productId)), 
+        quantity: parseFloat(String(p.quantity)) || 0,
+        packages: parseInt(String(p.packages)) || 0,
+        netWeight: parseFloat(String(p.netWeight)) || 0,
+        grossWeight: parseFloat(String(p.grossWeight)) || 0,
+        packageType: p.packageType || "",
+      })),
+      attachments: (form.attachments || []).map(a => ({
+        url: a.url,
+        description: a.description || 'Document'
+      }))
+    };
+
+    if (editing) {
+      await axios.put(`http://localhost:5000/api/containers/${editing.id}`, payload);
+      toast.success('Container updated!');
+    } else {
+      await axios.post('http://localhost:5000/api/containers', payload);
+      toast.success('Container added!');
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['containers'] });
+    setEditOpen(false);
+  } catch (error: any) {
+    console.error("Error detail:", error.response?.data);
+    toast.error(error.response?.data?.error || 'Failed to save container');
+  }
+};
+
+const handleDelete = useCallback(async () => {
+  if (!deleting) return;
+
+  try {
+    await axios.delete(
+      `http://localhost:5000/api/containers/${deleting.id}`
+    );
+
+    queryClient.invalidateQueries({
+      queryKey: ['containers']
     });
 
-    setContainers(prev => prev.filter(c => c.id !== deleting.id));
-    setDeleteOpen(false);
-    setDeleting(null);
+    toast.success('Container deleted');
 
-    toast.success("Deleted");
-  }, [deleting]);
+    setDeleting(null);
+    setDeleteOpen(false);
+
+  } catch (error) {
+    console.error(error);
+    toast.error('Delete failed');
+  }
+}, [deleting, queryClient]);
+
+
+  if (isLoading) {
+  return (
+    <div className="flex h-96 items-center justify-center">
+      Loading...
+    </div>
+  );
+}
 
   return (
-    <div className="space-y-6">
+    <div className="notranslate" translate="no">
+      <PageHeader title={t('Containers & Shipping', 'Containers & Shipping')} description={t('pages.containersDescRoot', 'Track your containers from port to port. Add products and manage shipping details.')}
+        action={<Button onClick={openNew} size="lg"><Plus className="mr-2 h-4 w-4" /> {t('Add Container', 'Add Container')}</Button>} />
 
-      <PageHeader
-        title={t('Containers & Shipping')}
-        description={t('Manage shipments easily and efficiently')}
-        action={<Button onClick={openNew}><Plus className="mr-2 w-4 h-4" /> Add</Button>}
-      />
-
-      {/* LIST */}
-      <div className="grid gap-4">
-        {containers.length === 0 && (
-          <div className="text-center text-gray-400 py-20">
-            No containers yet
-          </div>
-        )}
-
+      <div className="space-y-4">
         {containers.map(c => (
-          <div key={c.id} className="border rounded-xl p-5 bg-card shadow-sm">
-
-            <div className="flex justify-between items-center">
-              <div className="font-bold text-lg">{c.containerNumber}</div>
-
-              <Badge className={statusColors[c.status]}>
-                {statusIcons[c.status]} {t(`status.${c.status}`, c.status)}
-              </Badge>
+          <div key={c.id} className="rounded-xl bg-card p-5 card-shadow transition-shadow hover:card-shadow-hover">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-info/10">
+                  <Ship className="h-5 w-5 text-info" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground">{c.containerNumber}</h3>
+                  <Badge variant="outline" className={`mt-1 ${statusColors[c.status]}`}>
+                    {statusIcons[c.status]}{t(`status.${c.status}`, { defaultValue: c.status })}
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="sm" onClick={() => openEdit(c)}><Pencil className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="sm" className="text-destructive" onClick={() => { setDeleting(c); setDeleteOpen(true); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+              </div>
             </div>
 
-            <div className="flex gap-2 mt-4">
-              <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
-                <Pencil className="w-4 h-4" />
-              </Button>
-
-              <Button size="sm" variant="outline" onClick={() => {
-                setDeleting(c);
-                setDeleteOpen(true);
-              }}>
-                <Trash2 className="w-4 h-4" />
-              </Button>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="flex items-center gap-2 text-sm">
+                <Anchor className="h-4 w-4 text-muted-foreground" />
+                <div><p className="text-xs text-muted-foreground">{t('From', 'From')}</p><p className="font-medium text-foreground">{c.sourcePort || '—'}</p></div>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+                <div><p className="text-xs text-muted-foreground">{t('To', 'To')}</p><p className="font-medium text-foreground">{c.destinationPort || '—'}</p></div>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <div><p className="text-xs text-muted-foreground">{t('Shipped', 'Shipped')}</p><p className="font-medium text-foreground">{c.shippingDate ? formatDate(c.shippingDate) : '—'}</p></div>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <div><p className="text-xs text-muted-foreground">Arrival (Est.)</p><p className="font-medium text-foreground">{c.arrivalDate ? formatDate(c.arrivalDate) : '—'}</p></div>
+              </div>
             </div>
 
-            {/* attachments preview */}
-            {c.attachments?.length > 0 && (
-              <div className="mt-3 flex gap-2 flex-wrap">
-                {c.attachments.map(a => (
-                  <div
-                    key={a.id}
-                    className="flex items-center gap-2 text-xs border rounded px-2 py-1 cursor-pointer"
-                    onClick={() => setViewingFile(a.url)}
-                  >
-                    <FileText className="w-3 h-3" />
-                    {a.description}
-                  </div>
-                ))}
+            {(c.products || []).length > 0 && (
+              <div className="mt-4 rounded-lg bg-muted/40 p-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2">{t('Products in this container', 'Products in this container')}</p>
+                <div className="space-y-1.5">
+                  {(c.products || []).map((cp, i) => {
+                    const product = products.find(p => p.id === cp.productId);
+                    return (
+                      <div key={i} className="flex flex-col gap-1 text-sm border-b pb-1 last:border-0 last:pb-0">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-3.5 w-3.5 text-primary" />
+                            <span className="text-foreground">{product?.name || 'Unknown'}</span>
+                          </div>
+                          <span className="text-muted-foreground">Qty: {cp.quantity} · {cp.packages} pkgs</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground pl-5">
+                          <span>Net/Gross: {[cp.netWeight, cp.grossWeight].filter(Boolean).join('/') || '—'}</span>
+                          <span>Type: {cp.packageType || '—'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
+            {c.attachments && c.attachments.length > 0 && (
+              <div className="mt-4">
+                <span className="font-semibold text-xs text-muted-foreground block mb-2 uppercase">Attachments</span>
+                <div className="flex gap-2 flex-wrap">
+                  {c.attachments.map((att) => (
+                    <div
+                      key={att.id}
+                      onClick={() => setViewingFile(att.url)}
+                      className="flex items-center gap-1.5 border rounded-md px-2.5 py-1.5 text-xs cursor-pointer hover:bg-accent transition-colors"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-primary" />
+                      {att.description || 'Document'}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
-      </div>
 
-      {/* DIALOG */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? "Edit Container" : "Add Container"}</DialogTitle>
-          </DialogHeader> 
-
-          <div className="space-y-3">
-            <Input
-              placeholder="Container Number"
-              value={form.containerNumber}
-              onChange={e => setForm({ ...form, containerNumber: e.target.value })}
-            />
-
-            <Button onClick={() => fileInputRef.current?.click()}>
-              <Camera className="w-4 h-4 mr-2" />
-              Upload File
-            </Button>
-            <div className="border-t pt-4">
-  <div className="flex justify-between items-center mb-2">
-    <h3 className="text-sm font-semibold flex items-center gap-2">
-      <Package className="w-4 h-4" /> Products
-    </h3>
-    <Button type="button" variant="ghost" size="sm" onClick={addProductToForm}>
-      <Plus className="w-4 h-4 mr-1" /> Add Item
-    </Button>
-  </div>
-
-  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
-    {form.products.map((p, index) => (
-      <div key={index} className="grid grid-cols-12 gap-2 items-end border p-2 rounded-lg bg-gray-50/50">
-        <div className="col-span-5">
-          <label className="text-[10px] text-gray-500">Product Name</label>
-          <Select 
-            value={p.productId} 
-            onValueChange={(val) => updateProductInForm(index, 'productId', val)}
-          >
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Select Product" />
-            </SelectTrigger>
-            <SelectContent>
-              {products.map(prod => (
-                <SelectItem key={prod.id} value={prod.id}>{prod.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="col-span-3">
-          <label className="text-[10px] text-gray-500">Qty</label>
-          <Input 
-            type="number" 
-            className="h-8 text-xs" 
-            value={p.quantity} 
-            onChange={(e) => updateProductInForm(index, 'quantity', e.target.value)}
-          />
-        </div>
-
-        <div className="col-span-3">
-          <label className="text-[10px] text-gray-500">Pkgs</label>
-          <Input 
-            type="number" 
-            className="h-8 text-xs" 
-            value={p.packages} 
-            onChange={(e) => updateProductInForm(index, 'packages', e.target.value)}
-          />
-        </div>
-
-        <div className="col-span-1">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-8 w-8 text-red-500 hover:text-red-700" 
-            onClick={() => removeProductFromForm(index)}
-          >
-            <Trash2 className="w-3 h-3" />
-          </Button>
-        </div>
-      </div>
-    ))}
-    
-    {form.products.length === 0 && (
-      <div className="text-center text-xs text-gray-400 py-4 border-2 border-dashed rounded-lg">
-        No products added yet.
-      </div>
-    )}
-  </div>
-</div>
-
-            <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} />
+        {containers.length === 0 && (
+          <div className="rounded-xl border-2 border-dashed p-12 text-center">
+            <Ship className="mx-auto h-10 w-10 text-muted-foreground/50" />
+            <p className="mt-3 text-muted-foreground">No containers tracked yet. Add your first container!</p>
           </div>
+        )}
+      </div>
 
+      {/* Create/Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editing ? t('Edit Container', 'Edit Container') : t('pages.addContainer', 'Add Container')}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div><Label>{t('Container Number *', 'Container Number *')}</Label><Input value={form.containerNumber} onChange={e => setForm(f => ({ ...f, containerNumber: e.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>{t('Source Port', 'Source Port')}</Label><Input value={form.sourcePort} onChange={e => setForm(f => ({ ...f, sourcePort: e.target.value }))} /></div>
+              <div><Label>{t('Destination Port', 'Destination Port')}</Label><Input value={form.destinationPort} onChange={e => setForm(f => ({ ...f, destinationPort: e.target.value }))} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>{t('Shipping Date', 'Shipping Date')}</Label><DatePicker value={form.shippingDate} onChange={v => setForm(f => ({ ...f, shippingDate: v }))} /></div>
+              <div><Label>{t('Arrival Date', 'Arrival Date')}</Label><DatePicker value={form.arrivalDate} onChange={v => setForm(f => ({ ...f, arrivalDate: v }))} /></div>
+            </div>
+            <div>
+              <Label>{t('Status', 'Status')}</Label>
+              <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v as Container['status'] }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="loading">{t('status.loading', 'Loading')}</SelectItem>
+                  <SelectItem value="in-transit">{t('status.in-transit', 'In Transit')}</SelectItem>
+                  <SelectItem value="arrived">{t('status.arrived', 'Arrived')}</SelectItem>
+                  <SelectItem value="cleared">{t('status.cleared', 'Cleared')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Products */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>{t('Products in Container', 'Products in Container')}</Label>
+                <Button variant="outline" size="sm" onClick={addProduct}><Plus className="mr-1 h-3 w-3" /> {t('Add Product', 'Add Product')}</Button>
+              </div>
+              {(form.products || []).length === 0 && (
+                <p className="text-sm text-muted-foreground bg-muted/40 rounded-lg p-3 text-center">{t('No products added yet.', 'No products added yet.')}</p>
+              )}
+              <div className="space-y-3">
+                {(form.products || []).map((cp, i) => (
+                  <div key={i} className="rounded-lg border p-3 space-y-2 relative" translate="no">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">{t('Product #', 'Product #')}{i + 1}</span>
+                      <button onClick={() => removeProduct(i)} className="text-destructive hover:bg-destructive/10 rounded p-1"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                   <Select
+  value={cp.productId ? String(cp.productId) : undefined}
+  onValueChange={(value) => {
+    updateProduct(i, 'productId', value);
+  }}
+>
+  <SelectTrigger>
+    <SelectValue placeholder="Select Product" />
+  </SelectTrigger>
+
+  <SelectContent>
+    {productsLoading ? (
+      <div className="p-2 text-sm">Loading...</div>
+    ) : products.length === 0 ? (
+      <div className="p-2 text-sm">No products found</div>
+    ) : (
+      products.map((p: any) => (
+        <SelectItem
+          key={p.id}
+          value={String(p.id)}
+        >
+          {p.name}
+        </SelectItem>
+      ))
+    )}
+  </SelectContent>
+</Select>
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <div><Label className="text-xs">{t('Quantity', 'Quantity')}</Label><Input type="number" step="any" value={cp.quantity === 0 ? '' : cp.quantity} onChange={e => updateProduct(i, 'quantity', e.target.value)} /></div>
+                      <div>
+                        <Label className="text-xs">Net Weight</Label>
+                        <Input type="number" step="any" value={cp.netWeight === 0 ? '' : cp.netWeight} onChange={e => updateProduct(i, 'netWeight', e.target.value)} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Gross Weight</Label>
+                        <Input type="number" step="any" value={cp.grossWeight === 0 ? '' : cp.grossWeight} onChange={e => updateProduct(i, 'grossWeight', e.target.value)} />
+                      </div>
+                      <div><Label className="text-xs">{t('Packages', 'Packages Count')}</Label><Input value={cp.packages === 0 ? '' : cp.packages} onChange={e => updateProduct(i, 'packages', e.target.value)} /></div>
+                      <div className="col-span-2">
+                        <Label className="text-xs">Package Type</Label>
+                        <Input placeholder="e.g. Plastic, Cartons, Big Boxes..." value={cp.packageType || ''} onChange={e => updateProduct(i, 'packageType', e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Attachments Section */}
+            <div className="border-t pt-4 mt-2">
+              <div className="flex items-center justify-between mb-3">
+                <Label>Attachments</Label>
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <Camera className="h-4 w-4 mr-2" /> Upload File
+                </Button>
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.pdf,.xlsx,.xls,.csv" onChange={handleFileUpload} />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                {(form.attachments || []).map((att, i) => (
+                  <div key={att.id} className="flex gap-2 items-center border rounded-lg p-2 bg-muted/20">
+                    {att.url.startsWith('data:image/') ? (
+                      <img src={att.url} className="w-10 h-10 rounded object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded bg-muted flex flex-shrink-0 items-center justify-center">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    )}
+                    <Input className="h-8 text-xs flex-1" placeholder="Description..." value={att.description} onChange={e => {
+                      setForm(f => {
+                        const atts = [...(f.attachments || [])];
+                        atts[i] = { ...atts[i], description: e.target.value };
+                        return { ...f, attachments: atts };
+                      });
+                    }} />
+                    <button type="button" onClick={() => removeAttachment(i)} className="text-destructive p-1 rounded hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                ))}
+                {(form.attachments || []).length === 0 && (
+                  <div className="text-center py-4 text-sm text-muted-foreground bg-muted/30 rounded border border-dashed">
+                    No attachments uploaded yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave}>Save</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t('Cancel', 'Cancel')}</Button>
+            <Button onClick={handleSave}>{editing ? t('Save Changes', 'Save Changes') : t('pages.addContainer', 'Add Container')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* DELETE */}
-      <DeleteConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onConfirm={handleDelete}
-        itemName={deleting?.containerNumber || ''}
-      />
-
+      <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={handleDelete} itemName={deleting?.containerNumber || ''} />
       <FileViewer fileUrl={viewingFile} onClose={() => setViewingFile(null)} />
-
     </div>
   );
 }
+
+

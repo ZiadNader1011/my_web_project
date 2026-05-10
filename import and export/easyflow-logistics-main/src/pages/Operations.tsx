@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
-import { getShipmentOperations, saveShipmentOperations, generateId, ShipmentOperation, formatDate, getJobs, getClients, getContainers } from '@/data/store';
+import {  generateId, ShipmentOperation, formatDate, getJobs, getClients, getContainers } from '@/data/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,10 +14,20 @@ import { FileViewer } from '@/components/FileViewer';
 import { compressImage } from '@/utils/imageCompression';
 import { Plus, Pencil, Trash2, Calendar, ClipboardList, Camera, FileText, Wheat, Ship } from 'lucide-react';
 import { toast } from 'sonner';
+import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react'; 
 
 export default function Operations() {
+  const queryClient = useQueryClient();
+  const { data: operations = [], isLoading } = useQuery({
+    queryKey: ['shipmentOperations'],
+    queryFn: async () => {
+      const res = await axios.get('http://localhost:5000/api/operations');
+      return res.data;
+    }
+  });
   const { t } = useTranslation();
-  const [operations, setOperations] = useState<ShipmentOperation[]>(getShipmentOperations);
   const jobs = getJobs();
   const clients = getClients();
   const containers = getContainers();
@@ -55,44 +65,42 @@ export default function Operations() {
   const openEdit = (op: ShipmentOperation) => {
     setEditing(op);
     setForm({ 
-      operationDate: op.operationDate || op.jobDate || new Date().toISOString().split('T')[0], 
+operationDate: op.operationDate ? new Date(op.operationDate).toISOString().split('T')[0] : '',loadingDate: op.loadingDate ? new Date(op.loadingDate).toISOString().split('T')[0] : '',
       jobId: op.jobId, 
       clientName: op.clientName, 
       product: op.product || '',
       numberOfContainers: op.numberOfContainers || '',
-      quantity: op.quantity, 
-      loadingDate: op.loadingDate, 
+      quantity: op.quantity,  
       containerNumber: op.containerNumber, 
       responsiblePerson: op.responsiblePerson || '',
       qualityRepresentative: op.qualityRepresentative || '',
       notes: op.notes,
-      attachments: [...(op.attachments || [])]
+      attachments: Array.isArray(op.attachments) ? op.attachments : []
     });
     setEditOpen(true);
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const isImage = file.type.startsWith('image/');
-      let url = '';
-      if (isImage) {
-        url = await compressImage(file);
-      } else {
-        url = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (ev) => resolve(ev.target?.result as string);
-          reader.readAsDataURL(file);
-        });
-      }
-      setForm(f => ({
-        ...f,
-        attachments: [...f.attachments, { id: generateId(), url, description: '', createdAt: new Date().toISOString() }]
-      }));
-    }
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+// أضيفي state جديدة لحفظ الملفات الحقيقية قبل الرفع
+const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
+const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  if (e.target.files && e.target.files[0]) {
+    const file = e.target.files[0];
+    setSelectedFiles(prev => [...prev, file]);
+    setForm(f => ({
+      ...f,
+      attachments: [
+        ...f.attachments, 
+        { 
+          id: Math.random().toString(), 
+          url: URL.createObjectURL(file), 
+          description: file.name,
+          createdAt: new Date().toISOString() 
+        }
+      ]
+    }));
+  }
+}; 
   const removeAttachment = (index: number) => {
     setForm(f => ({
       ...f,
@@ -100,37 +108,72 @@ export default function Operations() {
     }));
   };
 
-  const handleSave = () => {
-    const opData: ShipmentOperation = {
-      ...form,
-      id: editing ? editing.id : generateId(),
-      createdAt: editing ? editing.createdAt : new Date().toISOString(),
-    };
-    
-    let updated;
-    if (editing) {
-      updated = operations.map(o => o.id === editing.id ? opData : o);
-      toast.success(t('Operation updated successfully', 'Operation updated successfully'));
-    } else {
-      updated = [...operations, opData];
-      toast.success(t('Operation created successfully', 'Operation created successfully'));
-    }
-    
-    updated.sort((a,b) => new Date(b.operationDate || b.jobDate || '').getTime() - new Date(a.operationDate || a.jobDate || '').getTime());
-    
-    setOperations(updated);
-    saveShipmentOperations(updated);
-    setEditOpen(false);
-  };
+const handleSave = async () => {
+  const formData = new FormData();
 
-  const handleDelete = () => {
-    if (!deleting) return;
-    const updated = operations.filter(o => o.id !== deleting.id);
-    setOperations(updated);
-    saveShipmentOperations(updated);
-    toast.success(t('Operation removed', 'Operation removed'));
+  // إرسال كل القيم من الفورم للـ FormData
+  formData.append('operationDate', form.operationDate);
+  formData.append('loadingDate', form.loadingDate);
+  formData.append('clientName', form.clientName);
+  formData.append('jobId', form.jobId);
+  formData.append('product', form.product);
+  formData.append('quantity', form.quantity);
+  formData.append('numberOfContainers', form.numberOfContainers);
+  formData.append('containerNumber', form.containerNumber); // 👈 تأكدي من إضافة هذا
+  formData.append('responsiblePerson', form.responsiblePerson); // 👈 وهذا
+  formData.append('qualityRepresentative', form.qualityRepresentative); // 👈 وهذا
+  formData.append('notes', form.notes);
+
+  // إرسال المرفقات القديمة كـ JSON string (مهم جداً للكنترولر)
+  formData.append('attachments', JSON.stringify(form.attachments));
+
+  // إرسال الملفات الجديدة
+  selectedFiles.forEach((file) => {
+    formData.append('attachments', file); // تأكدي أن الاسم هنا 'attachments' ليطابق الروت
+  });
+
+  try {
+    const url = editing 
+      ? `http://localhost:5000/api/operations/${editing.id}` 
+      : 'http://localhost:5000/api/operations';
+    
+    if (editing) {
+       await axios.put(url, formData);
+    } else {
+       await axios.post(url, formData);
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['shipmentOperations'] });
+    setSelectedFiles([]);
+    setEditOpen(false);
+    toast.success('Saved successfully!');
+  } catch (error) {
+    console.error(error);
+    toast.error('Failed to save files');
+  }
+};
+
+const handleDelete = async () => {
+  if (!deleting) return;
+  try {
+    await axios.delete(`http://localhost:5000/api/operations/${deleting.id}`);
+    
+    // تحديث الواجهة
+    queryClient.invalidateQueries({ queryKey: ['shipmentOperations'] });
+    toast.success(t('Operation removed'));
+    setDeleteOpen(false);
     setDeleting(null);
-  };
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      setDeleteOpen(false);
+      setDeleting(null);
+      queryClient.invalidateQueries({ queryKey: ['shipmentOperations'] });
+      return;
+    }
+    toast.error('Delete failed');
+  }
+};
+if (isLoading) return <div className="flex h-96 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   return (
     <div className="pb-10">

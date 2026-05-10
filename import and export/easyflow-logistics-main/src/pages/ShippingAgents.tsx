@@ -26,10 +26,10 @@ export default function ShippingAgents() {
     queryFn: () => axios.get('http://localhost:5000/api/shipping-agents').then(res => res.data)
   });
 
-  const { data: records = [] } = useQuery({
-    queryKey: ['shippingAgentRecords'],
-    queryFn: () => axios.get('http://localhost:5000/api/shippingAgentRecords').then(res => res.data)
-  });
+const { data: records = [] } = useQuery({
+  queryKey: ['shippingAgentRecords'],
+  queryFn: () => axios.get('http://localhost:5000/api/shipping-agent-records').then(res => res.data)
+});
 
   const { data: transactions = [] } = useQuery({
     queryKey: ['transactions'],
@@ -40,22 +40,28 @@ export default function ShippingAgents() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<ShippingAgent | null>(null);
   const [deleting, setDeleting] = useState<ShippingAgent | null>(null);
-  const [form, setForm] = useState({ name: '', address: '', telephone: '', personalNumber: '', email: '', attachmentUrl: '' });
+  const [form, setForm] = useState({ name: '',company: '', address: '', telephone: '', personalNumber: '', email: '', attachmentUrl: '' });
   const [viewingFile, setViewingFile] = useState<string | null>(null);
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: '', address: '', telephone: '', personalNumber: '', email: '', attachmentUrl: '' });
+    setForm({ name: '',company: '', address: '', telephone: '', personalNumber: '', email: '', attachmentUrl: '' });
     setEditOpen(true);
   };
+const openEdit = (a: ShippingAgent) => {
+  setEditing(a);
+  setForm({ 
+    name: a.name,
+    company: a.company || '', 
+    address: a.address || '', 
+    telephone: a.telephone || '', 
+    personalNumber: a.personalNumber || '', 
+    email: a.email || '', 
+    attachmentUrl: a.attachmentUrl || '' 
+  });
+  setEditOpen(true);
+};
 
-  const openEdit = (a: ShippingAgent) => {
-    setEditing(a);
-    setForm({ name: a.name, address: a.address || '', telephone: a.telephone || '', personalNumber: a.personalNumber || '', email: a.email || '', attachmentUrl: a.attachmentUrl || '' });
-    setEditOpen(true);
-  };
-
-  // 2. تعديل رفع الملفات ليكون متوافق مع السيرفر (اختياري لو عندك API رفع)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -72,38 +78,68 @@ export default function ShippingAgents() {
     }
   };
 
-  // 3. حفظ البيانات في الداتابيز
-  const handleSave = async () => {
-    if (!form.name.trim()) { toast.error('Please enter a name.'); return; }
+ const handleSave = async () => {
+  if (!form.name.trim()) { 
+    toast.error('Please enter a name.'); 
+    return; 
+  }
 
-    try {
-      if (editing) {
-        await axios.put(`http://localhost:5000/api/shipping-agents/${editing.id}`, form);
-        toast.success(`"${form.name}" updated!`);
-      } else {
-        await axios.post('http://localhost:5000/api/shipping-agents', form);
-        toast.success(`"${form.name}" added!`);
-      }
-      queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
-      setEditOpen(false);
-    } catch (error) {
-      toast.error('Failed to save to database');
-    }
+  // نحول البيانات لـ Object عادي لأننا رفعنا الملف بالفعل وحصلنا على الرابط
+  const payload = {
+    ...form,
+    // نضمن أن أي قيمة فارغة ترسل كـ null لتتوافق مع Postgres
+    company: form.company || null,
+    address: form.address || null,
+    telephone: form.telephone || null,
+    personalNumber: form.personalNumber || null,
+    email: form.email || null,
+    attachmentUrl: form.attachmentUrl || null
   };
 
-  // 4. حذف البيانات من الداتابيز
-  const handleDelete = useCallback(async () => {
+  try {
+    const url = editing 
+      ? `http://localhost:5000/api/shipping-agents/${editing.id}` 
+      : 'http://localhost:5000/api/shipping-agents';
+    
+    // استخدام axios بطريقة مباشرة أسهل
+    if (editing) {
+      await axios.put(url, payload);
+    } else {
+      await axios.post(url, payload);
+    }
+
+    toast.success(editing ? `"${form.name}" updated!` : `"${form.name}" added!`);
+    queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
+    setEditOpen(false);
+  } catch (error: any) {
+    console.error("Save Error:", error);
+    toast.error(error.response?.data?.error || 'Failed to save to database');
+  }
+};
+const handleDelete = async () => {
     if (!deleting) return;
     try {
-      await axios.delete(`http://localhost:5000/api/shipping-agents/${deleting.id}`);
-      queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
-      toast.success(`"${deleting.name}" removed.`);
-      setDeleting(null);
-      setDeleteOpen(false);
+        await axios.delete(`http://localhost:5000/api/shipping-agents/${deleting.id}`);
+        
+        // غلق النافذة وتصفير الحالة فوراً 🟢
+        setDeleteOpen(false);
+        setDeleting(null);
+
+        // تحديث البيانات عن طريق React Query فقط 🟢
+        queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
+        
+        toast.success('Deleted successfully');
     } catch (error) {
-      toast.error('Failed to delete');
+        // إذا اتمسح بالفعل، لا تظهر رسالة فشل
+        if (error.response?.status === 404 || error.message.includes('not found')) {
+            setDeleteOpen(false);
+            setDeleting(null);
+            return;
+        }
+        toast.error("Delete failed");
     }
-  }, [deleting, queryClient]);
+};
+
 
   if (isLoading) return <div className="p-8 text-center">Loading Agents...</div>;
 
@@ -206,6 +242,7 @@ export default function ShippingAgents() {
           <DialogHeader><DialogTitle>{editing ? t('Edit Shipping Agent', 'Edit Shipping Agent') : t('Add Shipping Agent', 'Add Shipping Agent')}</DialogTitle></DialogHeader>
           <div className="space-y-4 max-h-[60vh] overflow-y-auto px-1">
             <div><Label>{t('Name *', 'Name *')}</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+            <div><Label>{t('Company', 'Company')}</Label><Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
             <div><Label>{t('Address', 'Address')}</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} /></div>
             <div><Label>{t('Telephone', 'Telephone')}</Label><Input value={form.telephone} onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))} type="tel" dir="ltr" className="text-left" /></div>
             <div><Label>{t('Personal Number', 'Personal Number')}</Label><Input value={form.personalNumber} onChange={e => setForm(f => ({ ...f, personalNumber: e.target.value }))} type="tel" dir="ltr" className="text-left" /></div>

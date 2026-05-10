@@ -1,13 +1,13 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { StatCard } from '@/components/StatCard';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
+import { z } from 'zod';
 import {
-  generateId, Job, JobProduct, JobAttachment, OperationType, formatCurrency, sumByCurrency, formatBalanceObj, formatDate
+ Job, JobProduct, JobAttachment, OperationType, formatCurrency, formatBalanceObj, formatDate
 } from '@/data/store';
-import { compressImage } from '@/utils/imageCompression';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,22 +34,31 @@ const statusColors: Record<string, string> = {
   cancelled: 'bg-destructive/10 text-destructive border-destructive/20',
 };
 
+export const jobSchema = z.object({
+  title: z.string().min(3),
+  currency: z.string(),
+  products: z.array(
+    z.object({
+      productId: z.number(),
+      quantity: z.number().positive(),
+      unitPrice: z.number().positive(),
+    })
+  ),
+});
+
 export default function Jobs() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data: jobs = [], isLoading } = useQuery({
+ const { data: jobs = [], isLoading: jobsLoading} = useQuery({
     queryKey: ['jobs'],
-    queryFn: async () => {
-      const res = await axios.get('http://localhost:5000/api/jobs');
-      return res.data;
-    }
+    queryFn: () => axios.get('http://localhost:5000/api/jobs').then(res => res.data)
   });
   const { data: transactions = [] } = useQuery({
     queryKey: ['transactions'],
     queryFn: () => axios.get('http://localhost:5000/api/transactions').then(res => res.data)
   });
-  const { data: suppliers = [] } = useQuery({
+const { data: suppliers = [] } = useQuery({
     queryKey: ['suppliers'],
     queryFn: () => axios.get('http://localhost:5000/api/suppliers').then(res => res.data)
   });
@@ -57,7 +66,7 @@ export default function Jobs() {
     queryKey: ['clients'],
     queryFn: () => axios.get('http://localhost:5000/api/clients').then(res => res.data)
   });
-  const { data: products = [] } = useQuery({
+ const { data: products = [] } = useQuery({
     queryKey: ['products'],
     queryFn: () => axios.get('http://localhost:5000/api/products').then(res => res.data)
   });
@@ -131,22 +140,20 @@ export default function Jobs() {
     setEditOpen(true);
   };
 
-  const openEdit = (j: Job) => {
-    setEditing(j);
-    setForm({
-      title: j.title || '', supplierId: j.supplierId || 'none', clientId: j.clientId || 'none', containerId: j.containerId || 'none',
-      currency: j.currency, paymentDate: j.paymentDate, status: j.status, operationType: j.operationType,
-      invoiceNumber: j.invoiceNumber || '', blNumber: j.blNumber || '', exportCertificate: j.exportCertificate || '', shippingAgent: j.shippingAgent || '', incoterm: j.incoterm || 'none', departurePort: j.departurePort || '', arrivalPort: j.arrivalPort || '', transitTo: j.transitTo || '', packingListUrl: j.packingListUrl || '',
-      isSold: j.isSold || false, discountPercentage: j.discountPercentage || 0, supplierDiscountPercentage: j.supplierDiscountPercentage || 0, rawMaterialPricePerTon: j.rawMaterialPricePerTon || 0, rawMaterialWeight: j.rawMaterialWeight || 0, rawMaterialCost: j.rawMaterialCost || 0, pettyCash: j.pettyCash || 0, otherCostReason: j.otherCostReason || '',
-      numberOfContainers: j.numberOfContainers || (j.containerIds?.length) || (j.containerId && j.containerId !== 'none' ? 1 : ''),
-      containerIds: j.containerIds || (j.containerId && j.containerId !== 'none' ? [j.containerId] : []),
-      notes: j.notes, products: [...j.products], attachments: [...(j.attachments || [])],
-      numberOfReps: j.numberOfReps || '',
-      repNames: [...(j.repNames || [])],
-      createdAt: (j.createdAt || new Date().toISOString()).split('T')[0]
-    });
-    setEditOpen(true);
-  };
+  const openEdit = (j: any) => {
+  setEditing(j);
+  setForm({
+    ...j,
+    supplierId: j.supplierId ? String(j.supplierId) : 'none',
+    clientId: j.clientId ? String(j.clientId) : 'none',
+    invoiceNumber: j.jobNumber || '', 
+    attachments: Array.isArray(j.attachments) ? j.attachments : [],
+    containerIds: Array.isArray(j.containerIds)
+  ? j.containerIds.map(String)
+  : [],
+  });
+  setEditOpen(true);
+};
 
   const addProductLine = () => {
     setForm(f => ({ ...f, products: [...f.products, { productId: '', quantity: 0, unitPrice: 0, packages: 0, numberOfPallets: 0, packageType: '', variety: '', caliber: '', grade: '' }] }));
@@ -165,43 +172,44 @@ export default function Jobs() {
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+  if (e.target.files && e.target.files[0]) {
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('file', file); 
+    try {
+      const res = await axios.post('http://localhost:5000/api/upload', formData);
+      const imageUrl = res.data.url; 
 
-      // بدل الـ Base64، هنبعت الملف للسيرفر فوراً
-      const formData = new FormData();
-      formData.append('file', file);
-
-      try {
-        const res = await axios.post('http://localhost:5000/api/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-
-        // السيرفر هيرجعلك رابط الصورة الجديد (مثلاً /uploads/image.jpg)
-        const imageUrl = res.data.url;
-
-        setForm(f => ({
-          ...f,
-          attachments: [...(f.attachments || []), {
-            id: generateId(),
-            url: imageUrl, // هنا خزننا الرابط مش الـ Base64
-            description: '',
-            createdAt: new Date().toISOString()
-          }]
-        }));
-      } catch (error) {
-        toast.error("Failed to upload image");
-      }
+      setForm(f => ({
+        ...f,
+        attachments: [...f.attachments, {
+          id: Date.now().toString(),
+          url: imageUrl,
+          description: file.name,
+          createdAt: new Date().toISOString()
+        }]
+      }));
+    } catch (error) {
+      toast.error("Upload failed");
     }
-  };
+  }
+};
 
-  const handlePackingListUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const base64 = await compressImage(e.target.files[0]);
-      setForm(f => ({ ...f, packingListUrl: base64 }));
+const handlePackingListUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  if (e.target.files && e.target.files[0]) {
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await axios.post('http://localhost:5000/api/upload', formData);
+      setForm(f => ({ ...f, packingListUrl: res.data.url }));
+      toast.success('File uploaded and linked');
+    } catch (err) {
+      toast.error('Upload failed');
     }
-    e.target.value = '';
-  };
+  }
+};
 
   const removeAttachment = (index: number) => {
     setForm(f => ({
@@ -212,58 +220,41 @@ export default function Jobs() {
 
   const calcTotal = (prods: { quantity?: string | number; unitPrice?: string | number }[]) => prods.reduce((s, p) => s + (Number(p.quantity) || 0) * (Number(p.unitPrice) || 0), 0);
 
- const handleSave = async () => {
-  if (!form.title.trim()) {
-    toast.error('Please enter a job title.');
+const handleSave = async () => {
+  const validProducts = form.products
+    .filter(p => p.productId && p.productId !== 'none') 
+    .map(p => ({
+      productId: Number(p.productId),
+      quantity: Number(p.quantity) || 1,
+      unitPrice: Number(p.unitPrice) || 0,
+      currency: p.currency || form.currency
+    }));
+
+  if (validProducts.length === 0 && activeTab !== 'supply') {
+    toast.error("Please add at least one valid product");
     return;
   }
 
-  // تجهيز البيانات بشكل يطابق توقعات Prisma في الباك إند
   const finalJobData = {
-    title: form.title,
-    jobNumber: form.invoiceNumber || `JOB-${Date.now()}`,
-    operationType: activeTab, // تأكد من إرسال نوع العملية (export/import/supply)
-    status: form.status,
-    currency: form.currency,
-    notes: form.notes,
-    
-    // تحويل القيم لـ Numbers أو null لـ Foreign Keys
-    supplierId: form.supplierId === 'none' ? null : Number(form.supplierId),
-    clientId: form.clientId === 'none' ? null : Number(form.clientId),
-    
-    // البيانات المالية
-    discountPercentage: parseFloat(form.discountPercentage.toString()) || 0,
-    supplierDiscountPercentage: parseFloat(form.supplierDiscountPercentage.toString()) || 0,
-    rawMaterialPricePerTon: parseFloat(form.rawMaterialPricePerTon.toString()) || 0,
-    rawMaterialWeight: parseFloat(form.rawMaterialWeight.toString()) || 0,
-    pettyCash: parseFloat(form.pettyCash.toString()) || 0,
-    
-  // تأكد إن الجزء ده في handleSave كدة:
-products: form.products.map(p => ({
-  productId: Number(p.productId), // لازم يكون الرقم التعريفي للمنتج
-  quantity: parseFloat(p.quantity.toString()) || 0,
-  unitPrice: parseFloat(p.unitPrice.toString()) || 0,
-  currency: p.currency || form.currency
-}))
+    ...form,
+   supplierId: (!form.supplierId || form.supplierId === 'none') ? null : Number(form.supplierId),
+    clientId: (!form.clientId || form.clientId === 'none') ? null : Number(form.clientId),
+    products: validProducts,
+    containerIds: form.containerIds.filter(id => id !== 'none').map(Number)
   };
 
   try {
-  if (editing) {
-  // الصح: نبعت على /api/jobs/:id مباشرة
-  await axios.put(`http://localhost:5000/api/jobs/${editing.id}`, finalJobData);
-  toast.success(`"${form.title}" updated!`);
-} else {
-      // الإضافة: نستخدم المسار الصحيح المباشر /api/jobs (بدون add)
+    if (editing) {
+      await axios.put(`http://localhost:5000/api/jobs/${editing.id}`, finalJobData);
+    } else {
       await axios.post('http://localhost:5000/api/jobs', finalJobData);
-      toast.success(`"${form.title}" created!`);
     }
-
     queryClient.invalidateQueries({ queryKey: ['jobs'] });
     setEditOpen(false);
-    setForm(emptyForm);
+    toast.success("Job saved successfully! 🎉");
   } catch (error) {
-    console.error("Error saving job:", error);
-    toast.error("Failed to save to database. Check console for details.");
+    console.error("Save Error:", error.response?.data);
+    toast.error(error.response?.data?.error || "Check if Product ID exists in Database");
   }
 };
 
@@ -271,7 +262,6 @@ products: form.products.map(p => ({
   if (!deleting) return;
 
   try {
-    // استخدام المسار الصحيح للحذف
     await axios.delete(`http://localhost:5000/api/jobs/${deleting.id}`);
 
     queryClient.invalidateQueries({ queryKey: ['jobs'] });
@@ -283,7 +273,15 @@ products: form.products.map(p => ({
     toast.error("Failed to delete from database.");
   }
 }, [deleting, queryClient]);
+
+
+   if (jobsLoading) {
   return (
+    <div className="p-10 text-center text-muted-foreground">
+      Loading jobs...
+    </div>
+  );
+}return (
     <div>
       <PageHeader title={t('common.jobs', 'Jobs')} description={t('pages.jobsDesc', 'Manage your import, export, and supply jobs centrally.')}
         action={<Button onClick={openNew} size="lg"><Plus className="mr-2 h-4 w-4" /> {t('pages.createJob', 'New Job')}</Button>} />
@@ -320,7 +318,6 @@ products: form.products.map(p => ({
 
               const jobProductsValuationObj = Object.fromEntries(
                 Object.entries(jobProductsValuationObjGross).map(([c, v]) => {
-                  // نحدد إن v رقم بشكل صريح، ونحول الـ discount لرقم برضه
                   const value = Number(v) || 0;
                   const discount = Number(job.discountPercentage || 0);
 
@@ -447,7 +444,6 @@ products: form.products.map(p => ({
 
                               const baseDiscountObj = Object.fromEntries(
                                 Object.entries(grossValuationObj).map(([c, v]) => {
-                                  // التأكد من أن v رقم قبل ضربه
                                   const val = Number(v) || 0;
                                   const discount = Number(job.discountPercentage || 0);
                                   return [c, val * (discount / 100)];
@@ -517,7 +513,6 @@ products: form.products.map(p => ({
                           <div className="rounded-lg bg-muted/40 p-3 space-y-2">
                             {job.products.map((jp, i) => {
                               const prod = products.find(p => p.id === jp.productId);
-                              // تحويل القيم لأرقام بشكل آمن لمنع خطأ Arithmetic Operation
                               const quantity = Number(jp.quantity || 0);
                               const unitPrice = Number(jp.unitPrice || 0);
                               const lineTotal = quantity * unitPrice;
@@ -662,7 +657,7 @@ products: form.products.map(p => ({
                   <SelectTrigger><SelectValue placeholder="Select Client" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    {clients.map(c => (<SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
@@ -673,7 +668,7 @@ products: form.products.map(p => ({
                   <SelectTrigger><SelectValue placeholder="Select Supplier" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                    {suppliers.map(s => (<SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
@@ -765,7 +760,7 @@ products: form.products.map(p => ({
                     <SelectTrigger><SelectValue placeholder="Link container" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No container / Skip</SelectItem>
-                      {containers.map(c => <SelectItem key={c.id} value={c.id}>{c.containerNumber}</SelectItem>)}
+                     {containers.map(c => (<SelectItem key={c.id} value={String(c.id)}>{c.containerNumber}</SelectItem>))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -899,10 +894,24 @@ products: form.products.map(p => ({
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                     <p className="text-xs font-medium text-muted-foreground">Product #{i + 1}</p>
-                    <Select value={jp.productId} onValueChange={v => updateProductLine(i, 'productId', v)}>
-                      <SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger>
-                      <SelectContent>{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                    </Select>
+                   {/* ابحثي عن الجزء الذي يعرض اختيار المنتج داخل سطر المنتجات وحدثيه هكذا */}
+<Select 
+  value={String(jp.productId)} 
+  onValueChange={(val) => updateProductLine(i, 'productId', val)}
+>
+  <SelectTrigger className="w-[200px]">
+    <SelectValue placeholder="Select Product" />
+  </SelectTrigger>
+  <SelectContent>
+    {}
+    {products && products.length > 0 ? (
+      products.map((p: any) => (
+        <SelectItem key={p.id} value={String(p.id)}>
+          {p.name}
+        </SelectItem>
+      ))
+    ) : (<SelectItem value="none" disabled>No products found</SelectItem>
+                                                                         )}</SelectContent></Select>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
                       <div>
                         <Label className="text-sm">Quantity</Label>
@@ -1053,7 +1062,6 @@ products: form.products.map(p => ({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         onConfirm={handleDelete}
-        // نستخدم title أو name ونحولها لنص لضمان عدم تمرير undefined
         itemName={String(deleting?.title || deleting?.id || '')}
       />
     </div>

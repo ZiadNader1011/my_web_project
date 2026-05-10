@@ -1,21 +1,57 @@
 const prisma = require('../lib/prisma');
 
-// 1. جلب كل العملاء مع عدد الـ Jobs الخاصة بكل واحد
-exports.getClients = async (req, res) => {
-    try {
-        const clients = await prisma.client.findMany({
-            include: {
-                _count: {
-                    select: { jobs: true } // بيعرفك العميل ده عمل كام شحنة/وظيفة
-                }
-            },
-            orderBy: { name: 'asc' }
-        });
-        res.json(clients);
-    } catch (error) {
-        console.error("Fetch Clients Error:", error);
-        res.status(500).json({ error: "Failed to load clients list" });
-    }
+exports.getAllClients = async (req, res) => {
+  try {
+    const clients = await prisma.client.findMany({
+      include: {
+        jobs: {
+          include: {
+            products: true
+          }
+        },
+        transactions: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    const formatted = clients.map(client => {
+      let operationsValue = 0;
+      let remainingBalance = 0;
+
+      client.jobs.forEach(job => {
+        const total =
+          Number(job.totalPrice || 0) -
+          (Number(job.totalPrice || 0) *
+            Number(job.discountPercentage || 0)) /
+            100;
+
+        operationsValue += total;
+        remainingBalance += total;
+      });
+
+      client.transactions.forEach(tx => {
+        if (tx.type === 'incoming') {
+          remainingBalance -= Number(tx.amount || 0);
+        }
+      });
+
+      return {
+        ...client,
+        operationsCount: client.jobs.length,
+        operationsValue,
+        remainingBalance
+      };
+    });
+
+    res.json(formatted);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: 'Failed to fetch clients'
+    });
+  }
 };
 
 // 2. إضافة عميل جديد مع التحقق من عدم التكرار
@@ -103,20 +139,28 @@ exports.getClientDetails = async (req, res) => {
     }
 };
 
-// 5. حذف عميل
 exports.deleteClient = async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        await prisma.client.delete({
-            where: { id: Number(id) }
-        });
+  try {
+    const { id } = req.params;
 
-        res.json({ message: "Client and all related history deleted successfully" });
-    } catch (error) {
-        console.error("Delete Client Error:", error);
-        res.status(400).json({ 
-            error: "Cannot delete client. Ensure they have no active jobs first or check server logs." 
-        });
+   
+    const client = await prisma.client.findUnique({ where: { id: Number(id) } });
+    if (!client) {
+        return res.status(404).json({ error: "العميل غير موجود بالفعل" });
     }
+
+    const jobsCount = await prisma.job.count({ where: { clientId: Number(id) } });
+    if (jobsCount > 0) {
+      return res.status(400).json({ error: "لا يمكن الحذف: العميل مرتبط بعمليات قائمة" });
+    }
+
+
+    await prisma.client.delete({ where: { id: Number(id) } });
+
+
+    return res.status(200).json({ success: true, id: id }); 
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'حدث خطأ أثناء محاولة الحذف' });
+  }
 };

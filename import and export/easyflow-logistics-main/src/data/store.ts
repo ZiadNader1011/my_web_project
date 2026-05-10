@@ -21,6 +21,9 @@ export interface Client {
   address?: string;
   dhl?: string;
   agentName?: string;
+  operationsCount?: number;
+operationsValue?: number;
+remainingBalance?: number;
 }
 
 export interface Employee {
@@ -82,7 +85,7 @@ export interface StandalonePackingList {
   numberOfProducts?: number;
   products?: PackingListProduct[];
 
-  attachments: { _id: string; url: string; description: string; createdAt: string }[];
+  attachments: { id: string; url: string; description: string; createdAt: string }[];
 }
 
 export interface Commission {
@@ -90,6 +93,7 @@ export interface Commission {
   date: string;
   clientName: string;
   numberOfContainers: number;
+  actualFiles?: File[];
   totalQuantityTon: number;
   commissionPerTon: number;
   currency: string;
@@ -113,7 +117,7 @@ export interface ShipmentOperation {
   responsiblePerson?: string;
   qualityRepresentative?: string;
   notes: string;
-  attachments?: { _id: string; url: string; description: string; createdAt: string }[];
+  attachments?: any[];
   createdAt: string;
 }
 
@@ -262,11 +266,14 @@ export interface UploadedFile {
 export interface ShippingAgent {
  id: string;
   name: string;
+  company?: string;
   address?: string;
   telephone?: string;
   personalNumber?: string;
   email?: string;
   attachmentUrl?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ShippingAgentRecord {

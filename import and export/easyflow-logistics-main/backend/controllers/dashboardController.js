@@ -1,4 +1,7 @@
 const prisma = require('../lib/prisma');
+import { Request, Response } from 'express';
+import { DashboardService } from './dashboard.service';
+
 
 exports.getDashboardSummary = async (req, res) => {
   try {
@@ -10,7 +13,6 @@ exports.getDashboardSummary = async (req, res) => {
     const clients = await prisma.client.findMany({ select: { balance: true } });
     const suppliers = await prisma.supplier.findMany({ select: { balance: true } });
 
-    // 3. حساب المبيعات الإجمالية (Aggregating by Currency)
     const totalSalesObj = {};
     jobs.forEach(job => {
       const discount = Number(job.discountPercentage || 0);

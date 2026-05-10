@@ -4,6 +4,10 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+import cors from 'cors';
+import helmet from 'helmet';
+
+import dashboardRoutes from './modules/dashboard/dashboard.routes';
 
 
 // 1. استيراد الـ Routes (لازم يكون فوق قبل الاستخدام)
@@ -46,6 +50,9 @@ app.use(cors());
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads')); 
+app.use(cors());
+app.use(helmet());
+app.use(express.json());
 
 // 4. استخدام الـ Routes
 app.use('/api/suppliers', supplierRoutes);
@@ -60,7 +67,7 @@ app.use('/api/employees', employeeRoutes);
 app.use('/api/commissions', commissionRoutes);
 app.use('/api/operations', operationRoutes);
 app.use('/api/transactions', financialRoutes);
-
+app.use('/api/dashboard', dashboardRoutes);
 
 
 // 5. مسار الرفع المباشر
@@ -79,3 +86,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT} 🚀`);
 });
+export default app;

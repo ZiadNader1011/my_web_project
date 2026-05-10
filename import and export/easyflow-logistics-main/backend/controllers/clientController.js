@@ -142,8 +142,6 @@ exports.getClientDetails = async (req, res) => {
 exports.deleteClient = async (req, res) => {
   try {
     const { id } = req.params;
-
-   
     const client = await prisma.client.findUnique({ where: { id: Number(id) } });
     if (!client) {
         return res.status(404).json({ error: "العميل غير موجود بالفعل" });

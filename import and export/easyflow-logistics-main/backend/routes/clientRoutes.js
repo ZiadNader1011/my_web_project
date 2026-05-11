@@ -1,22 +1,27 @@
-import { protect } from '../middleware/auth.js';
 import express from 'express';
-// ✅ استوردنا الـ Schema والدالة العامة validate مباشرة
+import { protect } from '../middleware/auth.js'; // 1. استيراد بوابة الحماية
 import { clientSchema, validate } from '../middleware/validator.js'; 
 import * as clientController from '../controllers/clientController.js';
 
 const router = express.Router();
-router.use(protect);
 
-// --- العمليات التي لا تحتاج فحص (GET) ---
+/**
+ * --- العمليات المفتوحة (Public) ---
+ * مسموح للموظفين أو النظام برؤية البيانات
+ */
 router.get('/', clientController.getAllClients); 
 router.get('/:id', clientController.getClientDetails);
 
-// --- العمليات التي تحتاج فحص (POST & PUT) ---
-// ✅ استخدمنا validate(clientSchema) في سطر واحد بدل تعريف دالة جديدة
-router.post('/', validate(clientSchema), clientController.createClient);
-router.put('/:id', validate(clientSchema), clientController.updateClient);
+/**
+ * --- العمليات المحمية (Protected) ---
+ * تتطلب وجود Token سليم + فحص للبيانات المرسلة
+ */
 
-// --- الحذف ---
-router.delete('/:id', clientController.deleteClient);
+// الترتيب: 1. حماية (Auth) -> 2. فحص (Validation) -> 3. تنفيذ (Controller)
+router.post('/', protect, validate(clientSchema), clientController.createClient);
+router.put('/:id', protect, validate(clientSchema), clientController.updateClient);
+
+// الحذف محمي طبعاً لمنع الكوارث
+router.delete('/:id', protect, clientController.deleteClient);
 
 export default router;

@@ -2,12 +2,17 @@ import express from 'express';
 import upload from '../middleware/upload.js';
 import { prisma } from '../lib/prisma.js';
 import { commissionSchema, validate } from '../middleware/validator.js';
+import { protect } from '../middleware/auth.js'; // 1. استيراد الميدل وير
 
 const router = express.Router();
-router.use(protect);
 
 // --- 1. إضافة عمولة جديدة (POST) ---
-router.post('/', upload.array('attachments'), validate(commissionSchema), async (req, res) => {
+// الترتيب: حماية (Auth) -> رفع ملفات (Multer) -> فحص بيانات (Validate)
+router.post('/', 
+    protect, 
+    upload.array('attachments'), 
+    validate(commissionSchema), 
+    async (req, res) => {
     try {
         const data = req.body;
         
@@ -40,15 +45,18 @@ router.post('/', upload.array('attachments'), validate(commissionSchema), async 
 });
 
 // --- 2. تحديث عمولة (PUT) ---
-router.put('/:id', upload.array('attachments'), validate(commissionSchema), async (req, res) => {
+router.put('/:id', 
+    protect, 
+    upload.array('attachments'), 
+    validate(commissionSchema), 
+    async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
-
-        // 1. تحويل الـ ID لرقم (مهم جداً!)
         const numericId = parseInt(id);
 
-        // 2. معالجة المرفقات القديمة
+        if (isNaN(numericId)) return res.status(400).json({ error: "ID غير صحيح" });
+
         let currentAttachments = [];
         if (data.attachments) {
             currentAttachments = typeof data.attachments === 'string' 
@@ -56,7 +64,6 @@ router.put('/:id', upload.array('attachments'), validate(commissionSchema), asyn
                 : data.attachments;
         }
 
-        // 3. إضافة المرفقات الجديدة (إن وجدت)
         if (req.files && req.files.length > 0) {
             const newFiles = req.files.map(file => ({
                 id: Math.random().toString(36).substr(2, 9),
@@ -68,7 +75,7 @@ router.put('/:id', upload.array('attachments'), validate(commissionSchema), asyn
         }
 
         const updated = await prisma.commission.update({
-            where: { id: numericId }, // ✅ استخدام الرقم المحول
+            where: { id: numericId },
             data: {
                 date: data.date ? new Date(data.date) : undefined,
                 clientName: data.clientName,
@@ -90,6 +97,7 @@ router.put('/:id', upload.array('attachments'), validate(commissionSchema), asyn
 });
 
 // --- 3. جلب كل العمولات (GET) ---
+// متاح للجميع حالياً، إذا أردتِ حمايته أضيفي protect قبل الـ async
 router.get('/', async (req, res) => {
     try {
         const records = await prisma.commission.findMany({
@@ -102,11 +110,15 @@ router.get('/', async (req, res) => {
 });
 
 // --- 4. حذف عمولة (DELETE) ---
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
     try {
         const { id } = req.params;
+        const numericId = parseInt(id);
+        
+        if (isNaN(numericId)) return res.status(400).json({ error: "ID غير صحيح" });
+
         await prisma.commission.delete({
-            where: { id: parseInt(id) } // ✅ تحويل الـ ID هنا أيضاً
+            where: { id: numericId }
         });
         return res.json({ success: true, message: "تم الحذف بنجاح" });
     } catch (error) {

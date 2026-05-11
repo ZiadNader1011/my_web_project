@@ -1,16 +1,14 @@
 import { Router } from 'express';
 import { getDashboardSummary } from '../controllers/dashboardController.js';
-// import { validateQuery, dashboardSchema } from '../middleware/validator.js'; // لو هتفعلي الفلاتر مستقبلاً
+import { protect } from '../middleware/auth.js'; // 1. استيراد بوابة الحماية
 
 const router = Router();
 
 /**
  * [GET] /api/dashboard
  * جلب ملخص عام لكل العمليات (حاويات، عمولات، فواتير، إلخ)
+ * تم إضافة protect لضمان أن المدير أو الموظف المصرح له فقط هو من يرى الإحصائيات
  */
-router.get("/", getDashboardSummary); 
-
-// مثال لو حبتي تضيفي فلاتر مستقبلاً:
-// router.get("/summary", validateQuery(dashboardSchema), getDashboardSummary);
+router.get("/", protect, getDashboardSummary); 
 
 export default router;

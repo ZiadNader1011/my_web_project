@@ -1,14 +1,19 @@
 import express from 'express';
 import upload from '../middleware/upload.js';
 import { prisma } from '../lib/prisma.js';
-import { shippingAgentSchema, validate } from '../middleware/validator.js'; // 1. الاستيراد
+import { shippingAgentSchema, validate } from '../middleware/validator.js';
+import { protect } from '../middleware/auth.js'; // ✅ 1. استيراد بوابة الحماية
 
 const router = express.Router();
-router.use(protect);
 
-// [POST] إضافة وكيل جديد
-// الترتيب: الرفع -> الفحص -> التنفيذ
-router.post('/', upload.single('file'), validate(shippingAgentSchema), async (req, res) => {
+// --- [POST] إضافة وكيل جديد ---
+// الترتيب: الرفع (Multer) -> الحماية (Auth) -> الفحص (Validator) -> التنفيذ
+router.post(
+    '/', 
+    upload.single('file'), 
+    protect, 
+    validate(shippingAgentSchema), 
+    async (req, res) => {
     try {
         const data = req.body;
         const fileUrl = req.file ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` : null;
@@ -27,7 +32,6 @@ router.post('/', upload.single('file'), validate(shippingAgentSchema), async (re
         return res.status(201).json(newAgent);
     } catch (error) {
         console.error("Create Agent Error:", error);
-        // معالجة خطأ الإيميل المتكرر (Unique constraint)
         if (error.code === 'P2002') {
             return res.status(400).json({ error: "هذا البريد الإلكتروني مسجل بالفعل لوكيل آخر" });
         }
@@ -35,8 +39,9 @@ router.post('/', upload.single('file'), validate(shippingAgentSchema), async (re
     }
 });
 
-// [GET] جلب كل الوكلاء
-router.get('/', async (req, res) => {
+// --- [GET] جلب كل الوكلاء ---
+// يُفضل حماية بيانات الوكلاء وأرقام هواتفهم بحيث لا يراها إلا الموظفين
+router.get('/', protect, async (req, res) => {
     try {
         const agents = await prisma.shippingAgent.findMany({
             orderBy: { id: 'desc' }
@@ -47,8 +52,13 @@ router.get('/', async (req, res) => {
     }
 });
 
-// [PUT] تحديث بيانات وكيل
-router.put('/:id', upload.single('file'), validate(shippingAgentSchema), async (req, res) => {
+// --- [PUT] تحديث بيانات وكيل ---
+router.put(
+    '/:id', 
+    upload.single('file'), 
+    protect, 
+    validate(shippingAgentSchema), 
+    async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
@@ -85,8 +95,8 @@ router.put('/:id', upload.single('file'), validate(shippingAgentSchema), async (
     }
 });
 
-// [DELETE] حذف وكيل
-router.delete('/:id', async (req, res) => {
+// --- [DELETE] حذف وكيل ---
+router.delete('/:id', protect, async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);
@@ -110,7 +120,6 @@ router.delete('/:id', async (req, res) => {
         return res.status(200).json({ success: true, message: "تم الحذف بنجاح" });
     } catch (error) {
         console.error("Delete Agent Error:", error);
-        // حماية ضد حذف وكيل مرتبطة به سجلات (Records) في الداتابيز
         if (error.code === 'P2003') {
             return res.status(400).json({ error: "لا يمكن حذف هذا الوكيل لوجود سجلات فواتير مرتبطة به" });
         }

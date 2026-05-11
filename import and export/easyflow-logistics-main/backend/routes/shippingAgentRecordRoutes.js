@@ -1,14 +1,19 @@
 import express from 'express';
 import upload from '../middleware/upload.js';
 import { prisma } from '../lib/prisma.js';
-import { shippingAgentRecordSchema, validate } from '../middleware/validator.js'; // 1. الاستيراد
+import { shippingAgentRecordSchema, validate } from '../middleware/validator.js';
+import { protect } from '../middleware/auth.js'; // ✅ 1. استيراد بوابة الحماية
 
 const router = express.Router();
-router.use(protect);
 
 // --- [POST] إضافة سجل جديد ---
-// الترتيب: الرفع يفك الـ FormData -> الفحص يتأكد من الأرقام والبيانات -> التنفيذ
-router.post('/', upload.single('pdfFile'), validate(shippingAgentRecordSchema), async (req, res) => {
+// الترتيب: الرفع (يفك الداتا) -> الحماية (يتأكد من المستخدم) -> الفحص (يتأكد من البيانات)
+router.post(
+    '/', 
+    upload.single('pdfFile'), 
+    protect, 
+    validate(shippingAgentRecordSchema), 
+    async (req, res) => {
     try {
         const data = req.body;
         const fileUrl = req.file ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` : null;
@@ -17,7 +22,6 @@ router.post('/', upload.single('pdfFile'), validate(shippingAgentRecordSchema), 
             data: {
                 agentId: parseInt(data.agentId), 
                 date: new Date(data.date), 
-                // حماية إضافية للـ jobId لو مبعوث "none" من الفرونت إند
                 jobId: (!data.jobId || data.jobId === 'none' || data.jobId === "") ? null : parseInt(data.jobId),
                 blNumber: data.blNumber || '',
                 country: data.country || '',
@@ -39,7 +43,7 @@ router.post('/', upload.single('pdfFile'), validate(shippingAgentRecordSchema), 
 });
 
 // --- [GET] جلب كل السجلات ---
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
     try {
         const records = await prisma.shippingAgentRecord.findMany({
             include: { agent: true, job: true }, 
@@ -52,7 +56,7 @@ router.get('/', async (req, res) => {
 });
 
 // --- [DELETE] حذف سجل ---
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);
@@ -73,7 +77,12 @@ router.delete('/:id', async (req, res) => {
 });
 
 // --- [PUT] تحديث سجل ---
-router.put('/:id', upload.single('pdfFile'), validate(shippingAgentRecordSchema), async (req, res) => {
+router.put(
+    '/:id', 
+    upload.single('pdfFile'), 
+    protect, 
+    validate(shippingAgentRecordSchema), 
+    async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;

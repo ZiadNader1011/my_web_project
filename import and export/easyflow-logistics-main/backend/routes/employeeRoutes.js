@@ -1,19 +1,20 @@
 import express from 'express';
 import { prisma } from '../lib/prisma.js';
-import { employeeSchema, validate } from '../middleware/validator.js'; // 1. استيراد الفلتر
+import { employeeSchema, validate } from '../middleware/validator.js';
+import { protect } from '../middleware/auth.js'; // 1. استيراد بوابة الحماية
 
 const router = express.Router();
-router.use(protect);
 
 /**
  * --- 1. جلب كل الموظفين (GET) ---
+ * عادة نتركها محمية بـ protect لأنها بيانات خاصة بالشركة
  */
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
     try {
         const employees = await prisma.employee.findMany({
             orderBy: { id: 'desc' }
         });
-        return res.json(employees); // أضفنا return لضمان إنهاء الطلب
+        return res.json(employees);
     } catch (error) {
         console.error("Error fetching employees:", error);
         return res.status(500).json({ error: "فشل في جلب قائمة الموظفين" });
@@ -22,9 +23,9 @@ router.get('/', async (req, res) => {
 
 /**
  * --- 2. إضافة موظف جديد (POST) ---
- * استخدمنا validate(employeeSchema) قبل التنفيذ ✅
+ * الترتيب: 1. حماية -> 2. فحص بيانات -> 3. تنفيذ
  */
-router.post('/', validate(employeeSchema), async (req, res) => {
+router.post('/', protect, validate(employeeSchema), async (req, res) => {
     try {
         const { name, phone, jobTitle } = req.body;
         
@@ -45,12 +46,11 @@ router.post('/', validate(employeeSchema), async (req, res) => {
 /**
  * --- 3. تحديث بيانات موظف (PUT) ---
  */
-router.put('/:id', validate(employeeSchema), async (req, res) => {
+router.put('/:id', protect, validate(employeeSchema), async (req, res) => {
     try {
         const { id } = req.params;
         const { name, phone, jobTitle } = req.body;
 
-        // مضاد للرصاص: تحويل الـ ID لـ Integer
         const numericId = parseInt(id);
         if (isNaN(numericId)) {
             return res.status(400).json({ error: "معرف الموظف غير صحيح" });
@@ -67,7 +67,6 @@ router.put('/:id', validate(employeeSchema), async (req, res) => {
         return res.json(updatedEmployee);
     } catch (error) {
         console.error("Error updating employee:", error);
-        // حماية: إذا كان الموظف غير موجود أصلاً
         if (error.code === 'P2025') {
             return res.status(404).json({ error: "الموظف غير موجود" });
         }
@@ -78,7 +77,7 @@ router.put('/:id', validate(employeeSchema), async (req, res) => {
 /**
  * --- 4. حذف موظف (DELETE) ---
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);
@@ -93,7 +92,6 @@ router.delete('/:id', async (req, res) => {
         return res.json({ success: true, message: "تم حذف الموظف بنجاح" });
     } catch (error) {
         console.error("Error deleting employee:", error);
-        // حماية ضد محاولة حذف موظف غير موجود أو مرتبط ببيانات أخرى
         return res.status(400).json({ error: "فشل في حذف الموظف، قد يكون غير موجود" });
     }
 });

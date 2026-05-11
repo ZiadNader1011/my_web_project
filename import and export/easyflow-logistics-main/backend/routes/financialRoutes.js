@@ -1,38 +1,40 @@
 import express from 'express';
 import * as financialController from '../controllers/financialController.js';
 import upload from '../middleware/upload.js'; 
-import { transactionSchema, validate } from '../middleware/validator.js'; // 1. استيراد الفلتر والعسكري
+import { transactionSchema, validate } from '../middleware/validator.js'; 
+import { protect } from '../middleware/auth.js'; // 1. استيراد بوابة الحماية
 
 const router = express.Router();
-router.use(protect);
 
 /**
  * --- 1. جلب كل المعاملات المالية (GET) ---
- * لا يحتاج لفحص الجسم (Body)، العمليات هنا جلب فقط.
+ * أضفنا protect لأن بيانات الخزينة والفلوس لا يجب أن يراها أي شخص
  */
-router.get('/', financialController.getTransactions);
+router.get('/', protect, financialController.getTransactions);
 
 /**
  * --- 2. إضافة معاملة جديدة (POST) ---
- * الترتيب: 
- * 1. upload.none() لفك بيانات الـ FormData.
- * 2. validate(transactionSchema) للتأكد من صحة البيانات والأنواع.
- * 3. الكنترولر للتنفيذ.
+ * الترتيب "المضاد للرصاص":
+ * 1. upload.none(): فك بيانات الـ FormData أولاً.
+ * 2. protect: التأكد إن الشخص مسجل دخول ومعاه Token سليم.
+ * 3. validate: فحص جودة البيانات (رقم، نوع المعاملة، إلخ).
+ * 4. Controller: التنفيذ النهائي.
  */
 router.post(
     '/', 
     upload.none(), 
+    protect, 
     validate(transactionSchema), 
     financialController.createTransaction
 );
 
 /**
  * --- 3. تحديث معاملة مالية (PUT) ---
- * نفس منطق الـ POST مع التأكد من صحة الـ ID.
  */
 router.put(
     '/:id', 
     upload.none(), 
+    protect, 
     validate(transactionSchema), 
     financialController.updateTransaction
 );
@@ -40,6 +42,6 @@ router.put(
 /**
  * --- 4. حذف معاملة مالية (DELETE) ---
  */
-router.delete('/:id', financialController.deleteTransaction);
+router.delete('/:id', protect, financialController.deleteTransaction);
 
 export default router;

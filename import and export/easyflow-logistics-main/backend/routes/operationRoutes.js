@@ -1,19 +1,24 @@
 import express from 'express';
 import upload from '../middleware/upload.js';
 import * as operationController from '../controllers/operationController.js';
-import { shipmentOperationSchema, validate } from '../middleware/validator.js'; // 1. الاستيراد
+import { shipmentOperationSchema, validate } from '../middleware/validator.js';
+import { protect } from '../middleware/auth.js'; // 1. استيراد بوابة الحماية
 
 const router = express.Router();
-router.use(protect);
 
 // --- 1. جلب العمليات ---
-router.get('/', operationController.getOperations);
+// بنضيف protect عشان نضمن إن الموظفين بس اللي يشوفوا سجل العمليات
+router.get('/', protect, operationController.getOperations);
 
 // --- 2. إضافة عملية جديدة ---
-// الترتيب: الرفع يفك الـ FormData -> الفحص يتأكد من البيانات -> الكنترولر يحفظ
+// الترتيب الذهبي: 
+// 1. الرفع (Multer) عشان يفك الـ FormData ويشوف الداتا.
+// 2. الحماية (Protect) عشان نتأكد من هوية المستخدم.
+// 3. الفحص (Validate) عشان نتأكد إن البيانات سليمة.
 router.post(
     '/', 
     upload.array('attachments'), 
+    protect, 
     validate(shipmentOperationSchema), 
     operationController.createOperation
 );
@@ -22,11 +27,12 @@ router.post(
 router.put(
     '/:id', 
     upload.array('attachments'), 
+    protect, 
     validate(shipmentOperationSchema), 
     operationController.updateOperation
 );
 
 // --- 4. حذف عملية ---
-router.delete('/:id', operationController.deleteOperation);
+router.delete('/:id', protect, operationController.deleteOperation);
 
 export default router;

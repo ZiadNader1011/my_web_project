@@ -1,30 +1,19 @@
 import express from 'express';
-const router = express.Router();
-import multer from 'multer';
-import fs from 'fs';
+import upload from '../middleware/upload.js'; // استدعاء الموديول المركزي
 import { prisma } from '../lib/prisma.js';
 
-const uploadDir = './uploads/commissions/';
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
+const router = express.Router();
 
-const storage = multer.diskStorage({
-    destination: uploadDir,
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
-    }
-});
-const upload = multer({ storage });
-
-
+// --- 1. إضافة عمولة جديدة (Create) ---
 router.post('/', upload.array('attachments'), async (req, res) => {
     try {
         const data = req.body;
         
+        // معالجة الملفات المرفوعة
         const newFiles = (req.files || []).map(file => ({
             id: Math.random().toString(36).substr(2, 9),
-            url: `${req.protocol}://${req.get('host')}/uploads/commissions/${file.filename}`,
+            // لاحظي هنا بنستخدم الفولدر العام uploads اللي في الـ middleware
+            url: `${req.protocol}://${req.get('host')}/uploads/${file.filename}`,
             description: file.originalname,
             createdAt: new Date().toISOString()
         }));
@@ -40,35 +29,36 @@ router.post('/', upload.array('attachments'), async (req, res) => {
                 totalQuantityTon: parseFloat(data.totalQuantityTon) || 0,
                 commissionPerTon: parseFloat(data.commissionPerTon) || 0,
                 currency: data.currency || 'USD',
-                attachments: newFiles
+                attachments: newFiles // حفظ المصفوفة في قاعدة البيانات
             }
         });
-        res.status(201).json(newCommission);
+
+        return res.status(201).json(newCommission);
     } catch (error) {
         console.error("Create Error:", error);
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "فشل في إنشاء السجل، تأكد من البيانات" });
     }
 });
 
-
+// --- 2. جلب كل العمولات (Read) ---
 router.get('/', async (req, res) => {
     try {
         const records = await prisma.commission.findMany({
             orderBy: { date: 'desc' }
         });
-        res.json(records);
+        return res.json(records);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "فشل في جلب البيانات" });
     }
 });
 
-
+// --- 3. تحديث عمولة (Update) ---
 router.put('/:id', upload.array('attachments'), async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
 
-      
+        // معالجة المرفقات القديمة
         let currentAttachments = [];
         if (data.attachments) {
             currentAttachments = typeof data.attachments === 'string' 
@@ -76,11 +66,11 @@ router.put('/:id', upload.array('attachments'), async (req, res) => {
                 : data.attachments;
         }
 
-       
+        // إضافة المرفقات الجديدة (إن وجدت)
         if (req.files && req.files.length > 0) {
             const newFiles = req.files.map(file => ({
                 id: Math.random().toString(36).substr(2, 9),
-                url: `${req.protocol}://${req.get('host')}/uploads/commissions/${file.filename}`,
+                url: `${req.protocol}://${req.get('host')}/uploads/${file.filename}`,
                 description: file.originalname,
                 createdAt: new Date().toISOString()
             }));
@@ -102,23 +92,22 @@ router.put('/:id', upload.array('attachments'), async (req, res) => {
                 attachments: currentAttachments 
             }
         });
-        res.json(updated);
+        return res.json(updated);
     } catch (error) {
         console.error("Update Error:", error);
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "فشل في تحديث البيانات" });
     }
 });
 
-
+// --- 4. حذف عمولة (Delete) ---
 router.delete('/:id', async (req, res) => {
     try {
-       
         await prisma.commission.delete({
             where: { id: parseInt(req.params.id) }
         });
-        res.json({ success: true });
+        return res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "حدث خطأ أثناء الحذف" });
     }
 });
 

@@ -1,26 +1,14 @@
 import express from 'express';
-const router = express.Router();
-import multer from 'multer';
-import fs from 'fs';
+import upload from '../middleware/upload.js'; // استدعاء الموديول المركزي
 import { prisma } from '../lib/prisma.js';
 
-
-
-const uploadDir = './uploads/';
-if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); }
-
-const storage = multer.diskStorage({
-    destination: uploadDir,
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
-    }
-});
-const upload = multer({ storage });
+const router = express.Router();
 
 // [POST] إضافة سجل فاتورة لوكيل
 router.post('/', upload.single('pdfFile'), async (req, res) => {
     try {
         const data = req.body;
+        // استخدام الرابط الديناميكي بناءً على الملف المرفوع من الميدل وير المركزي
         const fileUrl = req.file ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` : null;
         
         const newRecord = await prisma.shippingAgentRecord.create({
@@ -40,27 +28,27 @@ router.post('/', upload.single('pdfFile'), async (req, res) => {
                 pdfUrl: fileUrl, 
             }
         });
-        res.status(201).json(newRecord);
+        return res.status(201).json(newRecord);
     } catch (error) {
         console.error("Record Create Error:", error);
-        res.status(500).json({ error: error.message });
-  }
+        return res.status(500).json({ error: "فشل في إنشاء السجل، تأكد من البيانات" });
+    }
 });
 
 // [GET] جلب كل سجلات الفواتير
 router.get('/', async (req, res) => {
     try {
         const records = await prisma.shippingAgentRecord.findMany({
-            include: { agent: true, job: true }, // اختيارياً: لجلب اسم الوكيل والعملية مع السجل
+            include: { agent: true, job: true }, 
             orderBy: { date: 'desc' }
         });
-        res.json(records);
+        return res.json(records);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message });
     }
 });
 
-
+// [DELETE] حذف سجل
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -110,9 +98,9 @@ router.put('/:id', upload.single('pdfFile'), async (req, res) => {
             where: { id: parseInt(req.params.id) },
             data: updateData
         });
-        res.json(updated);
+        return res.json(updated);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message });
     }
 });
 

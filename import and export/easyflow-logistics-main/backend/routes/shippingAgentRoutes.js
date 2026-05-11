@@ -1,14 +1,14 @@
 import express from 'express';
-const router = express.Router();
-import multer from 'multer';
+import upload from '../middleware/upload.js'; // الاستيراد من الميدل وير المركزي
 import { prisma } from '../lib/prisma.js';
 
-const upload = multer({ dest: 'uploads/' });
+const router = express.Router();
 
-
+// [POST] إضافة وكيل جديد
 router.post('/', upload.single('file'), async (req, res) => {
     try {
         const data = req.body;
+        // استخدام الرابط الموحد للملفات
         const fileUrl = req.file ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` : null;
 
         const newAgent = await prisma.shippingAgent.create({
@@ -22,27 +22,26 @@ router.post('/', upload.single('file'), async (req, res) => {
                 attachmentUrl: fileUrl
             }
         });
-        res.status(201).json(newAgent);
+        return res.status(201).json(newAgent);
     } catch (error) {
         console.error("Create Agent Error:", error);
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "حدث خطأ أثناء إضافة الوكيل" });
     }
 });
 
-
+// [GET] جلب كل الوكلاء
 router.get('/', async (req, res) => {
     try {
         const agents = await prisma.shippingAgent.findMany({
             orderBy: { id: 'desc' }
         });
-        res.json(agents);
+        return res.json(agents);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message });
     }
 });
 
-
-
+// [PUT] تحديث بيانات وكيل
 router.put('/:id', upload.single('file'), async (req, res) => {
     try {
         const { id } = req.params;
@@ -65,38 +64,34 @@ router.put('/:id', upload.single('file'), async (req, res) => {
             where: { id: parseInt(id) },
             data: updateData
         });
-        res.json(updated);
+        return res.json(updated);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message });
     }
 });
 
-
-// التعديل في الباك إند (shippingAgentRoutes.js)
+// [DELETE] حذف وكيل
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);
 
-        // 1. نتحقق أولاً هل السجل موجود؟
         const record = await prisma.shippingAgent.findUnique({
             where: { id: numericId }
         });
 
-        // 2. لو مش موجود (اتمسح فعلاً)، نرد بنجاح "Success" عشان الفرونت إند يسكت
         if (!record) {
             return res.status(200).json({ success: true, message: "Already deleted" });
         }
 
-        // 3. لو موجود، نمسحه
         await prisma.shippingAgent.delete({
             where: { id: numericId }
         });
 
-        res.status(200).json({ success: true });
+        return res.status(200).json({ success: true });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: "Server Error" });
+        return res.status(500).json({ error: "Server Error" });
     }
 });
 

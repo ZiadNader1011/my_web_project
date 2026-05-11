@@ -1,35 +1,20 @@
 import express from 'express';
-const router = express.Router();
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
+import upload from '../middleware/upload.js'; // استدعاء الموديول المركزي
 import * as operationController from '../controllers/operationController.js';
 
-// إعداد التخزين
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const dir = 'uploads/operations/';
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-        // استخدام اسم فريد يجمع بين التاريخ والاسم الأصلي لتجنب تكرار الأسماء
-        cb(null, Date.now() + path.extname(file.originalname)); 
-    }
-});
+const router = express.Router();
 
-const upload = multer({ storage: storage });
-
-// جلب العمليات
+// --- 1. جلب العمليات ---
 router.get('/', operationController.getOperations);
 
-// إضافة عملية - غيرنا 'files' لـ 'attachments' ✅
+// --- 2. إضافة عملية جديدة ---
+// بنستخدم upload.array('attachments') من الموديول المركزي مباشرة
 router.post('/', upload.array('attachments'), operationController.createOperation);
 
-// تحديث عملية - غيرنا 'files' لـ 'attachments' ✅
+// --- 3. تحديث عملية ---
 router.put('/:id', upload.array('attachments'), operationController.updateOperation);
 
-// حذف عملية
+// --- 4. حذف عملية ---
 router.delete('/:id', operationController.deleteOperation);
 
 export default router;

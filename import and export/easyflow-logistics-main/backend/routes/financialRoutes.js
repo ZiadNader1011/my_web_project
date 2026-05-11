@@ -1,34 +1,20 @@
 import express from 'express';
-const router = express.Router();
 import * as financialController from '../controllers/financialController.js';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
+import upload from '../middleware/upload.js'; // استدعاء الموديول المركزي
 
+const router = express.Router();
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const dir = 'uploads/financials/';
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-        cb(null, `FIN-${Date.now()}${path.extname(file.originalname)}`);
-    }
-});
-
-const upload = multer({ storage: storage });
-
-
+// --- 1. جلب كل المعاملات المالية ---
 router.get('/', financialController.getTransactions);
 
-
+// --- 2. إضافة معاملة جديدة ---
+// بنستخدم upload.none() عشان نستقبل النصوص (Text fields) من الـ FormData
 router.post('/', upload.none(), financialController.createTransaction);
 
-
+// --- 3. تحديث معاملة مالية ---
 router.put('/:id', upload.none(), financialController.updateTransaction);
 
-
-router.delete('/:id', financialController.deleteTransaction); 
+// --- 4. حذف معاملة مالية ---
+router.delete('/:id', financialController.deleteTransaction);
 
 export default router;

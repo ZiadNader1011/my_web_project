@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { employeeSchema, validate } from '../middleware/validator.js'; // 1. استيراد الفلتر
 
 const router = express.Router();
+router.use(protect);
 
 /**
  * --- 1. جلب كل الموظفين (GET) ---

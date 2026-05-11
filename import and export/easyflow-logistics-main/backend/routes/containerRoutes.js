@@ -4,6 +4,7 @@ import upload from '../middleware/upload.js';
 import { containerSchema, validate } from '../middleware/validator.js'; // 1. استيراد الفلتر والعسكري
 
 const router = express.Router();
+router.use(protect);
 
 /**
  * --- العمليات الأساسية ---

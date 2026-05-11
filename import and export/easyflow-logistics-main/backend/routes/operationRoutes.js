@@ -4,6 +4,7 @@ import * as operationController from '../controllers/operationController.js';
 import { shipmentOperationSchema, validate } from '../middleware/validator.js'; // 1. الاستيراد
 
 const router = express.Router();
+router.use(protect);
 
 // --- 1. جلب العمليات ---
 router.get('/', operationController.getOperations);

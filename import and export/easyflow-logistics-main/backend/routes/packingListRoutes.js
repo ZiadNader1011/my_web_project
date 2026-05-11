@@ -4,6 +4,7 @@ import upload from '../middleware/upload.js';
 import { packingListSchema, validate } from '../middleware/validator.js'; // 1. استيراد العسكري والكتالوج
 
 const router = express.Router();
+router.use(protect);
 
 /**
  * --- 1. جلب قوائم التعبئة (Read) ---

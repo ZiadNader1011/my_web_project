@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { shippingAgentRecordSchema, validate } from '../middleware/validator.js'; // 1. الاستيراد
 
 const router = express.Router();
+router.use(protect);
 
 // --- [POST] إضافة سجل جديد ---
 // الترتيب: الرفع يفك الـ FormData -> الفحص يتأكد من الأرقام والبيانات -> التنفيذ

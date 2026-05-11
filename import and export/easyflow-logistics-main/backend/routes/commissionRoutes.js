@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { commissionSchema, validate } from '../middleware/validator.js';
 
 const router = express.Router();
+router.use(protect);
 
 // --- 1. إضافة عمولة جديدة (POST) ---
 router.post('/', upload.array('attachments'), validate(commissionSchema), async (req, res) => {

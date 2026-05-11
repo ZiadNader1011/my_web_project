@@ -1,9 +1,11 @@
+import { protect } from '../middleware/auth.js';
 import express from 'express';
 // ✅ استوردنا الـ Schema والدالة العامة validate مباشرة
 import { clientSchema, validate } from '../middleware/validator.js'; 
 import * as clientController from '../controllers/clientController.js';
 
 const router = express.Router();
+router.use(protect);
 
 // --- العمليات التي لا تحتاج فحص (GET) ---
 router.get('/', clientController.getAllClients); 

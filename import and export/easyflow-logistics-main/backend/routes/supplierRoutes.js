@@ -4,6 +4,7 @@ import * as supplierController from '../controllers/supplierController.js';
 import { supplierSchema, validate } from '../middleware/validator.js'; 
 
 const router = express.Router();
+router.use(protect);
 
 // ==========================================
 // تعريف الروابط (Routes) للموردين

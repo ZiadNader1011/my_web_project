@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { shippingAgentSchema, validate } from '../middleware/validator.js'; // 1. الاستيراد
 
 const router = express.Router();
+router.use(protect);
 
 // [POST] إضافة وكيل جديد
 // الترتيب: الرفع -> الفحص -> التنفيذ

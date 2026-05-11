@@ -315,3 +315,10 @@ model ShipmentOperation {
 
   @@map("shipment_operations")
 }
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  role      String   @default("admin") // ممكن يكون admin أو employee
+  createdAt DateTime @default(now())
+}

@@ -28,6 +28,7 @@ import employeeRoutes from './routes/employeeRoutes.js';
 import commissionRoutes from './routes/commissionRoutes.js';
 import operationRoutes from './routes/operationRoutes.js';
 import financialRoutes from './routes/financialRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 
 const app = express();
 
@@ -69,7 +70,7 @@ app.use('/api/commissions', commissionRoutes);
 app.use('/api/operations', operationRoutes);
 app.use('/api/transactions', financialRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-
+app.use('/api/auth', authRoutes);
 // 4. مسار الرفع المباشر
 app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).send('No file uploaded.');

@@ -4,6 +4,7 @@ import upload from '../middleware/upload.js';
 import { transactionSchema, validate } from '../middleware/validator.js'; // 1. استيراد الفلتر والعسكري
 
 const router = express.Router();
+router.use(protect);
 
 /**
  * --- 1. جلب كل المعاملات المالية (GET) ---

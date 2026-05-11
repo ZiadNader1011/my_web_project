@@ -1,9 +1,9 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const packingListController = require('../controllers/packingListController');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+import * as packingListController from '../controllers/packingListController.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 
 const storage = multer.diskStorage({
@@ -33,4 +33,4 @@ router.put('/:id', upload.array('attachments'), packingListController.updatePack
 
 router.delete('/:id', packingListController.deletePackingList);
 
-module.exports = router;
+export default router;

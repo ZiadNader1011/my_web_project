@@ -1,9 +1,8 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const multer = require('multer');
-const fs = require('fs');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import multer from 'multer';
+import fs from 'fs';
+import { prisma } from '../lib/prisma.js';
 
 const uploadDir = './uploads/commissions/';
 if (!fs.existsSync(uploadDir)) {
@@ -123,4 +122,4 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

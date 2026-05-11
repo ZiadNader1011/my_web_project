@@ -1,7 +1,7 @@
-const prisma = require('../lib/prisma');
+import { prisma } from '../lib/prisma.js';
 
-// 1. إضافة مورد جديد
-exports.createSupplier = async (req, res) => {
+
+export const createSupplier = async (req, res) => {
     try {
         const { name, country, address, contact, email, phone, vat, product } = req.body;
         
@@ -14,7 +14,7 @@ exports.createSupplier = async (req, res) => {
                 email: email || null,
                 phone: phone || null,
                 vat: vat || null,
-                product: product || null // تم التعديل ليتوافق مع السكيما الجديدة ✅
+                product: product || null 
             }
         });
         res.status(201).json(newSupplier);
@@ -25,7 +25,7 @@ exports.createSupplier = async (req, res) => {
 };
 
 // 2. تعديل مورد (Update)
-exports.updateSupplier = async (req, res) => {
+export const updateSupplier = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
@@ -50,7 +50,7 @@ exports.updateSupplier = async (req, res) => {
         res.status(400).json({ error: "Failed to update: " + error.message });
     }
 };
-exports.getSuppliers = async (req, res) => {
+export const getSuppliers = async (req, res) => {
     try {
         const suppliers = await prisma.supplier.findMany({
             orderBy: { name: 'asc' }
@@ -60,7 +60,7 @@ exports.getSuppliers = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
-exports.deleteSupplier = async (req, res) => {
+export const deleteSupplier = async (req, res) => {
     try {
         const { id } = req.params;
         

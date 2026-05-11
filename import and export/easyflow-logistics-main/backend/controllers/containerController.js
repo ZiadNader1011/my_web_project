@@ -1,7 +1,7 @@
-const prisma = require('../lib/prisma');
+import { prisma } from '../lib/prisma.js';
 
 
-exports.getAllContainers = async (req, res) => {
+export const getAllContainers = async (req, res) => {
     try {
         const containers = await prisma.container.findMany({
             include: {
@@ -16,7 +16,7 @@ exports.getAllContainers = async (req, res) => {
     }
 };
 
-exports.createContainer = async (req, res) => {
+export const createContainer = async (req, res) => {
     try {
         const data = req.body;
         if (!data.containerNumber) return res.status(400).json({ error: "Container number is required" });
@@ -65,7 +65,7 @@ exports.createContainer = async (req, res) => {
     }
 };
 
-exports.updateContainer = async (req, res) => {
+export const updateContainer = async (req, res) => {
     const { id } = req.params;
     const data = req.body;
 
@@ -120,7 +120,7 @@ exports.updateContainer = async (req, res) => {
 };
 
 
-exports.deleteContainer = async (req, res) => {
+export const deleteContainer = async (req, res) => {
     try {
         const { id } = req.params;
         await prisma.container.delete({ where: { id: Number(id) } });

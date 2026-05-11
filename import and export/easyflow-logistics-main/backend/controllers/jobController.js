@@ -1,5 +1,5 @@
-const prisma = require('../lib/prisma');  
-exports.getAllJobs = async (req, res) => {
+import { prisma } from '../lib/prisma.js';
+export const getAllJobs = async (req, res) => {
     try {
         const jobs = await prisma.job.findMany({
             include: {
@@ -21,7 +21,7 @@ exports.getAllJobs = async (req, res) => {
     }
 };
 
-exports.createJob = async (req, res) => {
+export const createJob = async (req, res) => {
     try {
         const data = req.body;
 
@@ -74,7 +74,7 @@ exports.createJob = async (req, res) => {
 };
 
 
-exports.updateJob = async (req, res) => {
+export const updateJob = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
@@ -115,7 +115,7 @@ exports.updateJob = async (req, res) => {
 };
 
 // 4. جلب وظيفة واحدة
-exports.getJobById = async (req, res) => {
+export const getJobById = async (req, res) => {
     try {
         const { id } = req.params;
         const job = await prisma.job.findUnique({
@@ -170,7 +170,7 @@ const calculateJobSummary = (job) => {
 };
 
 // 5. حذف الوظيفة
-exports.deleteJob = async (req, res) => {
+export const deleteJob = async (req, res) => {
     try {
         const { id } = req.params;
         await prisma.job.delete({

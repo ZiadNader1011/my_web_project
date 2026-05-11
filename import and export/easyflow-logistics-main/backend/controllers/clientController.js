@@ -1,6 +1,6 @@
-const prisma = require('../lib/prisma');
+import { prisma } from '../lib/prisma.js';
 
-exports.getAllClients = async (req, res) => {
+export const getAllClients = async (req, res) => {
   try {
     const clients = await prisma.client.findMany({
       include: {
@@ -55,7 +55,7 @@ exports.getAllClients = async (req, res) => {
 };
 
 // 2. إضافة عميل جديد مع التحقق من عدم التكرار
-exports.createClient = async (req, res) => {
+export const createClient = async (req, res) => {
     try {
         const data = req.body;
 
@@ -94,7 +94,7 @@ exports.createClient = async (req, res) => {
 };
 
 // 3. تعديل عميل (بذكاء: تحديث الحقول المرسلة فقط)
-exports.updateClient = async (req, res) => {
+export const updateClient = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
@@ -119,7 +119,7 @@ exports.updateClient = async (req, res) => {
 };
 
 // 4. جلب تفاصيل عميل واحد (لمشاهدة بروفايل العميل)
-exports.getClientDetails = async (req, res) => {
+export const getClientDetails = async (req, res) => {
     try {
         const { id } = req.params;
         const client = await prisma.client.findUnique({
@@ -139,7 +139,7 @@ exports.getClientDetails = async (req, res) => {
     }
 };
 
-exports.deleteClient = async (req, res) => {
+export const deleteClient = async (req, res) => {
   try {
     const { id } = req.params;
     const client = await prisma.client.findUnique({ where: { id: Number(id) } });

@@ -1,7 +1,7 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma.js';
 
-exports.getPackingLists = async (req, res) => {
+
+export const getPackingLists = async (req, res) => {
     try {
         const lists = await prisma.packingList.findMany({
             orderBy: { createdAt: 'desc' }
@@ -13,7 +13,7 @@ exports.getPackingLists = async (req, res) => {
     }
 };
 
-exports.createPackingList = async (req, res) => {
+export const createPackingList = async (req, res) => {
     try {
         const data = req.body;
 
@@ -61,7 +61,7 @@ exports.createPackingList = async (req, res) => {
     }
 };
 
-exports.updatePackingList = async (req, res) => {
+export const updatePackingList = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
@@ -111,7 +111,7 @@ exports.updatePackingList = async (req, res) => {
     }
 };
 
-exports.deletePackingList = async (req, res) => {
+export const deletePackingList = async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);

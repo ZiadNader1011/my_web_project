@@ -1,31 +1,37 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-const multer = require('multer');
+import 'dotenv/config';
+import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 import cors from 'cors';
 import helmet from 'helmet';
+import { fileURLToPath } from 'url';
 
-import dashboardRoutes from './modules/dashboard/dashboard.routes';
+// حل مشكلة الـ BigInt
+BigInt.prototype.toJSON = function() { return Number(this) };
 
+// إعداد __dirname لأنها غير مدعومة في نظام الـ ES Modules تلقائياً
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// 1. استيراد الـ Routes (لازم يكون فوق قبل الاستخدام)
-const supplierRoutes = require('./routes/supplierRoutes');
-const jobRoutes = require('./routes/jobRoutes');
-const clientRoutes = require('./routes/clientRoutes');
-const productRoutes = require('./routes/productRoutes');
-const containerRoutes = require('./routes/containerRoutes');
-const packingListRoutes = require('./routes/packingListRoutes');
-const shippingAgentRoutes = require('./routes/shippingAgentRoutes'); // للوكلاء
-const shippingAgentRecordRoutes = require('./routes/shippingAgentRecordRoutes'); // للسجلات
-const employeeRoutes = require('./routes/employeeRoutes');
-const commissionRoutes = require('./routes/commissionRoutes');
-const operationRoutes = require('./routes/operationRoutes');
-const financialRoutes = require('./routes/financialRoutes');
+// استيراد الـ Routes (لازم ينتهوا بـ .js)
+import dashboardRoutes from './routes/dashboardRoutes.js';
+import supplierRoutes from './routes/supplierRoutes.js';
+import jobRoutes from './routes/jobRoutes.js';
+import clientRoutes from './routes/clientRoutes.js';
+import productRoutes from './routes/productRoutes.js';
+import containerRoutes from './routes/containerRoutes.js';
+import packingListRoutes from './routes/packingListRoutes.js';
+import shippingAgentRoutes from './routes/shippingAgentRoutes.js';
+import shippingAgentRecordRoutes from './routes/shippingAgentRecordRoutes.js';
+import employeeRoutes from './routes/employeeRoutes.js';
+import commissionRoutes from './routes/commissionRoutes.js';
+import operationRoutes from './routes/operationRoutes.js';
+import financialRoutes from './routes/financialRoutes.js';
 
+const app = express();
 
-// 2. إعداد مجلد الرفع
+// 1. إعداد مجلد الرفع
 const uploadDir = './uploads/';
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
@@ -42,19 +48,14 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 } 
 });
 
-
-const app = express();
-
-// 3. Middlewares
+// 2. Middlewares
 app.use(cors());
+app.use(helmet());
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads')); 
-app.use(cors());
-app.use(helmet());
-app.use(express.json());
 
-// 4. استخدام الـ Routes
+// 3. استخدام الـ Routes
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/clients', clientRoutes);
@@ -69,8 +70,7 @@ app.use('/api/operations', operationRoutes);
 app.use('/api/transactions', financialRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
-
-// 5. مسار الرفع المباشر
+// 4. مسار الرفع المباشر
 app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).send('No file uploaded.');
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
@@ -81,9 +81,10 @@ app.get('/', (req, res) => {
     res.send("EasyFlow Logistics Backend is Running! 🚀");
 });
 
-// 6. تشغيل السيرفر
+// 5. تشغيل السيرفر
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT} 🚀`);
 });
+
 export default app;

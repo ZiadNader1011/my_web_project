@@ -1,8 +1,8 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma.js';
 
 
-exports.getAgents = async (req, res) => {
+
+export const getAgents = async (req, res) => {
   try {
     const agents = await prisma.shippingAgent.findMany({
       orderBy: { id: 'desc' }
@@ -15,7 +15,7 @@ exports.getAgents = async (req, res) => {
 };
 
 
-exports.createAgent = async (req, res) => {
+export const createAgent = async (req, res) => {
   try {
     const data = req.body;
     
@@ -46,7 +46,7 @@ exports.createAgent = async (req, res) => {
 };
 
 
-exports.updateAgent = async (req, res) => {
+export const updateAgent = async (req, res) => {
   try {
     const { id } = req.params;
     const numericId = parseInt(id);
@@ -85,7 +85,7 @@ exports.updateAgent = async (req, res) => {
 
 
 
-exports.deleteAgent = async (req, res) => {
+export const deleteAgent = async (req, res) => {
     try {
         await prisma.shippingAgent.delete({
             where: { id: parseInt(req.params.id) }

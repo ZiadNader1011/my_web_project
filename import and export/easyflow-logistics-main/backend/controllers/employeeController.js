@@ -1,8 +1,8 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma.js';
+
 
 // 1. جلب كل الموظفين
-exports.getEmployees = async (req, res) => {
+export const getEmployees = async (req, res) => {
   try {
     const employees = await prisma.employee.findMany({
       orderBy: { id: 'desc' }
@@ -14,7 +14,7 @@ exports.getEmployees = async (req, res) => {
 };
 
 // 2. إضافة موظف جديد
-exports.createEmployee = async (req, res) => {
+export const createEmployee = async (req, res) => {
   try {
     const { name, jobTitle, phone } = req.body;
     // التحقق من البيانات المطلوبة
@@ -29,7 +29,7 @@ exports.createEmployee = async (req, res) => {
   }
 };
 
-exports.updateEmployee = async (req, res) => {
+export const updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, jobTitle, phone } = req.body; // استخراج الحقول المطلوبة فقط
@@ -45,7 +45,7 @@ exports.updateEmployee = async (req, res) => {
 };
 
 // 4. حذف موظف
-exports.deleteEmployee = async (req, res) => {
+export const deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.employee.delete({

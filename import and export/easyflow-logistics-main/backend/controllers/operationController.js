@@ -1,11 +1,10 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const fs = require('fs').promises;
-const path = require('path');
+import { prisma } from '../lib/prisma.js';
+import fs from 'fs/promises';
+import path from 'path';
 
 const getFileUrl = (req, filename) => `${req.protocol}://${req.get('host')}/uploads/operations/${filename}`;
 
-exports.getOperations = async (req, res) => {
+export const getOperations = async (req, res) => {
     try {
         const operations = await prisma.shipmentOperation.findMany({
             orderBy: { operationDate: 'desc' },
@@ -17,7 +16,7 @@ exports.getOperations = async (req, res) => {
     }
 };
 
-exports.createOperation = async (req, res) => {
+export const createOperation = async (req, res) => {
     try {
         const data = req.body;
         
@@ -54,7 +53,7 @@ exports.createOperation = async (req, res) => {
     }
 };
 
-exports.updateOperation = async (req, res) => {
+export const updateOperation = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
@@ -114,7 +113,7 @@ const updated = await prisma.shipmentOperation.update({
     }
 };
 
-exports.deleteOperation = async (req, res) => {
+export const deleteOperation = async (req, res) => {
     try {
         const numericId = parseInt(req.params.id);
         const record = await prisma.shipmentOperation.findUnique({ where: { id: numericId } });

@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const jobController = require('../controllers/jobController');
+import * as jobController from '../controllers/jobController.js';
 
 // 1. جلب كل العمليات
 // GET /api/jobs
@@ -22,4 +22,4 @@ router.put('/:id', jobController.updateJob);
 // DELETE /api/jobs/:id
 router.delete('/:id', jobController.deleteJob);
 
-module.exports = router;
+export default router;

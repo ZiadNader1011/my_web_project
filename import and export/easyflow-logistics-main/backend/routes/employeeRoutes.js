@@ -1,9 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-
-// 1. جلب كل الموظفين - GET
+import { prisma } from '../lib/prisma.js';
 router.get('/', async (req, res) => {
     try {
         const employees = await prisma.employee.findMany({
@@ -70,4 +67,4 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

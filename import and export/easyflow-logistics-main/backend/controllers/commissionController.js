@@ -1,7 +1,6 @@
-const fs = require('fs');
-const path = require('path');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import fs from 'fs';
+import path from 'path';
+import { prisma } from '../lib/prisma.js';
 
 const uploadDir = path.join(__dirname, '../uploads/commissions');
 if (!fs.existsSync(uploadDir)) {
@@ -9,7 +8,7 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 
-exports.getCommissions = async (req, res) => {
+export const getCommissions = async (req, res) => {
     try {
         const commissions = await prisma.commission.findMany({
             orderBy: { date: 'desc' }
@@ -21,7 +20,7 @@ exports.getCommissions = async (req, res) => {
 };
 
 
-exports.createCommission = async (req, res) => {
+export const createCommission = async (req, res) => {
     try {
         const data = req.body;
         
@@ -57,7 +56,7 @@ exports.createCommission = async (req, res) => {
 };
 
 
-exports.updateCommission = async (req, res) => {
+export const updateCommission = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
@@ -108,7 +107,7 @@ exports.updateCommission = async (req, res) => {
     }
 };
 
-exports.deleteCommission = async (req, res) => {
+export const deleteCommission = async (req, res) => {
     try {
         const { id } = req.params;
         const commission = await prisma.commission.findUnique({ where: { id: parseInt(id) } });

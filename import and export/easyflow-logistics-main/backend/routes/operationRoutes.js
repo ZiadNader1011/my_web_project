@@ -1,9 +1,9 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const operationController = require('../controllers/operationController'); 
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import * as operationController from '../controllers/operationController.js';
 
 // إعداد التخزين
 const storage = multer.diskStorage({
@@ -32,4 +32,4 @@ router.put('/:id', upload.array('attachments'), operationController.updateOperat
 // حذف عملية
 router.delete('/:id', operationController.deleteOperation);
 
-module.exports = router;
+export default router;

@@ -1,6 +1,7 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const supplierController = require('../controllers/supplierController');
+// ✅ لازم تضيفي .js في الآخر
+import * as supplierController from '../controllers/supplierController.js';
 
 // ==========================================
 // تعريف الروابط (Routes) للموردين
@@ -23,4 +24,4 @@ router.put('/:id', supplierController.updateSupplier);
 // الرابط: http://localhost:5000/api/suppliers/:id
 router.delete('/:id', supplierController.deleteSupplier);
 
-module.exports = router;
+export default router;

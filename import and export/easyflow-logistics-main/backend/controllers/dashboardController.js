@@ -1,48 +1,46 @@
-const prisma = require('../lib/prisma');
-import { Request, Response } from 'express';
-import { DashboardService } from './dashboard.service';
+import { prisma } from '../lib/prisma.js'; 
 
 
-exports.getDashboardSummary = async (req, res) => {
+export const getDashboardSummary = async (req, res) => {
   try {
-    const jobs = await prisma.job.findMany({
-      where: { status: { not: 'cancelled' } },
-      include: { products: true }
+    // 1. تحديث الـ Materialized View لضمان دقة الأرقام
+    await prisma.$executeRaw`REFRESH MATERIALIZED VIEW dashboard_view;`;
+
+    // 2. جلب البيانات المالية المحسوبة مسبقاً من الـ View
+    const summaryView = await prisma.$queryRaw`SELECT * FROM dashboard_view`;
+    const data = summaryView[0];
+
+    // 3. جلب البيانات الديناميكية (آخر 5 عمليات)
+    const recentJobs = await prisma.job.findMany({
+      take: 5,
+      orderBy: { createdAt: 'desc' },
+      include: { 
+        client: { select: { name: true } } 
+      }
     });
 
-    const clients = await prisma.client.findMany({ select: { balance: true } });
-    const suppliers = await prisma.supplier.findMany({ select: { balance: true } });
-
-    const totalSalesObj = {};
-    jobs.forEach(job => {
-      const discount = Number(job.discountPercentage || 0);
-      job.products.forEach(p => {
-        const c = p.currency || job.currency || 'USD';
-        const netValue = (Number(p.quantity) * Number(p.unitPrice)) * (1 - discount / 100);
-        totalSalesObj[c] = (totalSalesObj[c] || 0) + netValue;
-      });
-    });
-
+    // 4. تجميع الكائن النهائي
     const summary = {
-      totalSales: totalSalesObj,
-      clientDebt: clients.reduce((sum, c) => sum + (Number(c.balance) || 0), 0),
-      supplierDebt: suppliers.reduce((sum, s) => sum + (Number(s.balance) || 0), 0),
-      stats: {
-        totalJobs: jobs.length,
-        activeContainers: await prisma.container.count({ where: { status: { not: 'cleared' } } }),
-        totalProducts: await prisma.product.count(),
-        totalTransactions: await prisma.transaction.count(),
+      totalSales: {
+        USD: Number(data?.total_sales_usd || 0),
+        EGP: Number(data?.total_sales_egp || 0)
       },
-      recentJobs: await prisma.job.findMany({
-        take: 5,
-        orderBy: { createdAt: 'desc' },
-        include: { client: { select: { name: true } } }
-      })
+      clientDebt: Number(data?.client_payments || 0),
+      supplierDebt: Number(data?.supplier_cost || 0),
+      agentCost: Number(data?.agent_cost || 0),
+      stats: {
+        totalJobs: Number(data?.jobs_count || 0),
+        activeContainers: Number(data?.active_containers || 0),
+        totalProducts: Number(data?.products_count || 0),
+        totalTransactions: Number(data?.transactions_count || 0),
+      },
+      recentJobs: recentJobs,
+      lastUpdated: data?.last_updated
     };
 
     res.json(summary);
   } catch (error) {
-    console.error("Dashboard Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("Dashboard Enterprise Error:", error);
+    res.status(500).json({ error: "Internal Server Error - Check Database View" });
   }
 };

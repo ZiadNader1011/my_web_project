@@ -1,9 +1,9 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const containerController = require('../controllers/containerController');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+import * as containerController from '../controllers/containerController.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 const uploadDir = 'uploads/';
 if (!fs.existsSync(uploadDir)) {
@@ -36,4 +36,4 @@ router.post("/upload", upload.single("file"), (req, res) => {
   });
 });
 
-module.exports = router;
+export default router;

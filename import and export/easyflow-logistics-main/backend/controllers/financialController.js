@@ -1,6 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-exports.getTransactions = async (req, res) => {
+import { prisma } from '../lib/prisma.js';
+export const getTransactions = async (req, res) => {
     try {
         const { entityId } = req.query;
 
@@ -34,7 +33,7 @@ exports.getTransactions = async (req, res) => {
 };
 
 
-exports.createTransaction = async (req, res) => {
+export const createTransaction = async (req, res) => {
     try {
         const { 
             type, relatedId, amount, currency, date, 
@@ -70,7 +69,7 @@ exports.createTransaction = async (req, res) => {
 };
 
 
-exports.updateTransaction = async (req, res) => {
+export const updateTransaction = async (req, res) => {
     try {
         const numericId = parseInt(req.params.id);
         const data = req.body;
@@ -101,7 +100,7 @@ exports.updateTransaction = async (req, res) => {
 };
 
 
-exports.deleteTransaction = async (req, res) => {
+export const deleteTransaction = async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);

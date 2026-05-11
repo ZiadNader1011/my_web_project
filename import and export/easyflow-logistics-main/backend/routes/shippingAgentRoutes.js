@@ -1,8 +1,7 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const multer = require('multer');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import multer from 'multer';
+import { prisma } from '../lib/prisma.js';
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -101,4 +100,4 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

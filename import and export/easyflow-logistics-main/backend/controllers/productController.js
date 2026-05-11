@@ -1,7 +1,7 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma.js';
 
-exports.getAllSuppliers = async (req, res) => {
+
+export const getAllSuppliers = async (req, res) => {
   try {
     const suppliers = await prisma.supplier.findMany({
       orderBy: {
@@ -17,7 +17,7 @@ exports.getAllSuppliers = async (req, res) => {
     });
   }
 };
-exports.getAllProducts = async (req, res) => {
+export const getAllProducts = async (req, res) => {
   try {
     const products = await prisma.product.findMany({
       orderBy: { createdAt: 'desc' }
@@ -28,7 +28,7 @@ exports.getAllProducts = async (req, res) => {
   }
 };
 
-exports.createProduct = async (req, res) => {
+export const createProduct = async (req, res) => {
   try {
     const { name, category, supplierIds, numberOfSuppliers } = req.body;
 
@@ -48,7 +48,7 @@ exports.createProduct = async (req, res) => {
   }
 };
 
-exports.updateProduct = async (req, res) => {
+export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, category, numberOfSuppliers, supplierIds } = req.body;
@@ -70,7 +70,7 @@ exports.updateProduct = async (req, res) => {
 };
 
 
-exports.deleteProduct = async (req, res) => {
+export const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.product.delete({

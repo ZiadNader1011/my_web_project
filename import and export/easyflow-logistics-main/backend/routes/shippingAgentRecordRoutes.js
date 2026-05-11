@@ -1,11 +1,11 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const multer = require('multer');
-const fs = require('fs');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+import multer from 'multer';
+import fs from 'fs';
+import { prisma } from '../lib/prisma.js';
 
-// 1. إعداد الرفع
+
+
 const uploadDir = './uploads/';
 if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); }
 
@@ -116,4 +116,4 @@ router.put('/:id', upload.single('pdfFile'), async (req, res) => {
     }
 });
 
-module.exports = router;
+export default router;

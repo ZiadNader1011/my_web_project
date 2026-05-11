@@ -1,5 +1,5 @@
 import express from 'express';
-import { protect } from '../middleware/auth.js'; // 1. استيراد بوابة الحماية
+import { protect ,authorize } from '../middleware/auth.js'; // 1. استيراد بوابة الحماية
 import { clientSchema, validate } from '../middleware/validator.js'; 
 import * as clientController from '../controllers/clientController.js';
 

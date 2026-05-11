@@ -35,5 +35,16 @@ router.post('/login', async (req, res) => {
         res.status(401).json({ error: "بيانات الدخول غير صحيحة" });
     }
 });
+export const authorize = (...roles) => {
+    return (req, res, next) => {
+        // req.user جيه من التوكن اللي فكناه في دالة protect
+        if (!roles.includes(req.user.role)) {
+            return res.status(403).json({ 
+                error: "صلاحياتك لا تسمح بالدخول لهذه الصفحة" 
+            });
+        }
+        next();
+    };
+};
 
 export default router;

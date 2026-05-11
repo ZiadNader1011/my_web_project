@@ -29,6 +29,7 @@ import commissionRoutes from './routes/commissionRoutes.js';
 import operationRoutes from './routes/operationRoutes.js';
 import financialRoutes from './routes/financialRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import morgan from 'morgan';
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use(helmet());
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads')); 
+app.use(morgan('dev'));
 
 // 3. استخدام الـ Routes
 app.use('/api/suppliers', supplierRoutes);
@@ -80,6 +82,18 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 
 app.get('/', (req, res) => {
     res.send("EasyFlow Logistics Backend is Running! 🚀");
+});
+
+app.use((err, req, res, next) => {
+    console.error("🚨 Error Logged:", err.stack); // بيطبع الخطأ بالتفصيل في السيرفر عندك
+
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({
+        success: false,
+        message: err.message || "حدث خطأ داخلي في السيرفر",
+        // الاختيار ده بيظهر تفاصيل الخطأ بس وانتي في مرحلة التطوير
+        stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+    });
 });
 
 // 5. تشغيل السيرفر

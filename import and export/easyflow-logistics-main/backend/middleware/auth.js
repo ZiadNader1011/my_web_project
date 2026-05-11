@@ -17,3 +17,16 @@ export const protect = (req, res, next) => {
         return res.status(401).json({ error: "التوكن غير صحيح أو منتهي الصلاحية" });
     }
 };
+
+// Middleware لتحديد الأدوار المسموحة
+export const authorize = (...roles) => {
+    return (req, res, next) => {
+        // req.user بيجي من دالة الـ protect اللي اشتغلنا عليها قبل كدة
+        if (!roles.includes(req.user.role)) {
+            return res.status(403).json({ 
+                error: `غير مسموح لدورك (${req.user.role}) بالقيام بهذا الإجراء` 
+            });
+        }
+        next();
+    };
+};

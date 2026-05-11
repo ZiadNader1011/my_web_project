@@ -319,6 +319,6 @@ model User {
   id        Int      @id @default(autoincrement())
   username  String   @unique
   password  String
-  role      String   @default("admin") // ممكن يكون admin أو employee
+  role      String   @default("admin") 
   createdAt DateTime @default(now())
 }

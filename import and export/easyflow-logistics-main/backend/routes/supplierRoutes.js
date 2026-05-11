@@ -1,27 +1,27 @@
 import express from 'express';
-const router = express.Router();
-// ✅ لازم تضيفي .js في الآخر
 import * as supplierController from '../controllers/supplierController.js';
+// 1. استيراد العسكري (validate) والكتالوج (supplierSchema)
+import { supplierSchema, validate } from '../middleware/validator.js'; 
+
+const router = express.Router();
 
 // ==========================================
 // تعريف الروابط (Routes) للموردين
 // ==========================================
 
 // 1. إضافة مورد جديد (POST)
-// الرابط: http://localhost:5000/api/suppliers
-router.post('/', supplierController.createSupplier);
+// الترتيب: الفحص أولاً (validate) لضمان أن الاسم والدولة موجودين، ثم التنفيذ
+router.post('/', validate(supplierSchema), supplierController.createSupplier);
 
 // 2. جلب قائمة كل الموردين (GET)
-// الرابط: http://localhost:5000/api/suppliers
-// تم التصحيح: هنا نستدعي الدالة من الـ controller وليس رابط URL
+// لا يحتاج لـ Validator لأنه جلب بيانات فقط
 router.get('/', supplierController.getSuppliers);
 
 // 3. تعديل بيانات مورد (PUT)
-// الرابط: http://localhost:5000/api/suppliers/:id
-router.put('/:id', supplierController.updateSupplier);
+// نستخدم validate للتأكد من أن البيانات الجديدة صحيحة قبل التعديل
+router.put('/:id', validate(supplierSchema), supplierController.updateSupplier);
 
 // 4. حذف مورد معين بواسطة الـ ID (DELETE)
-// الرابط: http://localhost:5000/api/suppliers/:id
 router.delete('/:id', supplierController.deleteSupplier);
 
 export default router;

@@ -1,14 +1,15 @@
 import express from 'express';
-import upload from '../middleware/upload.js'; // الاستيراد من الميدل وير المركزي
+import upload from '../middleware/upload.js';
 import { prisma } from '../lib/prisma.js';
+import { shippingAgentSchema, validate } from '../middleware/validator.js'; // 1. الاستيراد
 
 const router = express.Router();
 
 // [POST] إضافة وكيل جديد
-router.post('/', upload.single('file'), async (req, res) => {
+// الترتيب: الرفع -> الفحص -> التنفيذ
+router.post('/', upload.single('file'), validate(shippingAgentSchema), async (req, res) => {
     try {
         const data = req.body;
-        // استخدام الرابط الموحد للملفات
         const fileUrl = req.file ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` : null;
 
         const newAgent = await prisma.shippingAgent.create({
@@ -25,6 +26,10 @@ router.post('/', upload.single('file'), async (req, res) => {
         return res.status(201).json(newAgent);
     } catch (error) {
         console.error("Create Agent Error:", error);
+        // معالجة خطأ الإيميل المتكرر (Unique constraint)
+        if (error.code === 'P2002') {
+            return res.status(400).json({ error: "هذا البريد الإلكتروني مسجل بالفعل لوكيل آخر" });
+        }
         return res.status(500).json({ error: "حدث خطأ أثناء إضافة الوكيل" });
     }
 });
@@ -37,16 +42,21 @@ router.get('/', async (req, res) => {
         });
         return res.json(agents);
     } catch (error) {
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "فشل في جلب قائمة الوكلاء" });
     }
 });
 
 // [PUT] تحديث بيانات وكيل
-router.put('/:id', upload.single('file'), async (req, res) => {
+router.put('/:id', upload.single('file'), validate(shippingAgentSchema), async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
-        
+        const numericId = parseInt(id);
+
+        if (isNaN(numericId)) {
+            return res.status(400).json({ error: "معرف الوكيل غير صحيح" });
+        }
+
         const updateData = {
             name: data.name,
             company: data.company || null,
@@ -61,12 +71,16 @@ router.put('/:id', upload.single('file'), async (req, res) => {
         }
 
         const updated = await prisma.shippingAgent.update({
-            where: { id: parseInt(id) },
+            where: { id: numericId },
             data: updateData
         });
         return res.json(updated);
     } catch (error) {
-        return res.status(500).json({ error: error.message });
+        console.error("Update Agent Error:", error);
+        if (error.code === 'P2025') {
+            return res.status(404).json({ error: "الوكيل غير موجود" });
+        }
+        return res.status(500).json({ error: "فشل في تحديث بيانات الوكيل" });
     }
 });
 
@@ -76,22 +90,30 @@ router.delete('/:id', async (req, res) => {
         const { id } = req.params;
         const numericId = parseInt(id);
 
+        if (isNaN(numericId)) {
+            return res.status(400).json({ error: "معرف الوكيل غير صحيح" });
+        }
+
         const record = await prisma.shippingAgent.findUnique({
             where: { id: numericId }
         });
 
         if (!record) {
-            return res.status(200).json({ success: true, message: "Already deleted" });
+            return res.status(200).json({ success: true, message: "تم الحذف بالفعل مسبقاً" });
         }
 
         await prisma.shippingAgent.delete({
             where: { id: numericId }
         });
 
-        return res.status(200).json({ success: true });
+        return res.status(200).json({ success: true, message: "تم الحذف بنجاح" });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: "Server Error" });
+        console.error("Delete Agent Error:", error);
+        // حماية ضد حذف وكيل مرتبطة به سجلات (Records) في الداتابيز
+        if (error.code === 'P2003') {
+            return res.status(400).json({ error: "لا يمكن حذف هذا الوكيل لوجود سجلات فواتير مرتبطة به" });
+        }
+        return res.status(500).json({ error: "حدث خطأ أثناء محاولة الحذف" });
     }
 });
 

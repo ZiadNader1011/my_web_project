@@ -1,29 +1,31 @@
 import express from 'express';
-import upload from '../middleware/upload.js'; // استدعاء الموديول المركزي
+import upload from '../middleware/upload.js';
 import { prisma } from '../lib/prisma.js';
+import { shippingAgentRecordSchema, validate } from '../middleware/validator.js'; // 1. الاستيراد
 
 const router = express.Router();
 
-// [POST] إضافة سجل فاتورة لوكيل
-router.post('/', upload.single('pdfFile'), async (req, res) => {
+// --- [POST] إضافة سجل جديد ---
+// الترتيب: الرفع يفك الـ FormData -> الفحص يتأكد من الأرقام والبيانات -> التنفيذ
+router.post('/', upload.single('pdfFile'), validate(shippingAgentRecordSchema), async (req, res) => {
     try {
         const data = req.body;
-        // استخدام الرابط الديناميكي بناءً على الملف المرفوع من الميدل وير المركزي
         const fileUrl = req.file ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}` : null;
         
         const newRecord = await prisma.shippingAgentRecord.create({
             data: {
                 agentId: parseInt(data.agentId), 
                 date: new Date(data.date), 
-                jobId: (data.jobId === 'none' || !data.jobId || data.jobId === "") ? null : parseInt(data.jobId),
+                // حماية إضافية للـ jobId لو مبعوث "none" من الفرونت إند
+                jobId: (!data.jobId || data.jobId === 'none' || data.jobId === "") ? null : parseInt(data.jobId),
                 blNumber: data.blNumber || '',
                 country: data.country || '',
                 containerCount: parseInt(data.containerCount) || 0,
                 costEgp: parseFloat(data.costEgp) || 0,
-                costEgpNote: data.costEgpNote || '',
                 costEuro: parseFloat(data.costEuro) || 0,
-                costEuroNote: data.costEuroNote || '',
                 costUsd: parseFloat(data.costUsd) || 0,
+                costEgpNote: data.costEgpNote || '',
+                costEuroNote: data.costEuroNote || '',
                 costUsdNote: data.costUsdNote || '',
                 pdfUrl: fileUrl, 
             }
@@ -31,11 +33,11 @@ router.post('/', upload.single('pdfFile'), async (req, res) => {
         return res.status(201).json(newRecord);
     } catch (error) {
         console.error("Record Create Error:", error);
-        return res.status(500).json({ error: "فشل في إنشاء السجل، تأكد من البيانات" });
+        return res.status(500).json({ error: "فشل في إنشاء السجل، تأكد من صحة البيانات" });
     }
 });
 
-// [GET] جلب كل سجلات الفواتير
+// --- [GET] جلب كل السجلات ---
 router.get('/', async (req, res) => {
     try {
         const records = await prisma.shippingAgentRecord.findMany({
@@ -44,41 +46,44 @@ router.get('/', async (req, res) => {
         });
         return res.json(records);
     } catch (error) {
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "فشل في جلب السجلات" });
     }
 });
 
-// [DELETE] حذف سجل
+// --- [DELETE] حذف سجل ---
 router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        const numericId = parseInt(id);
+
+        if (isNaN(numericId)) return res.status(400).json({ error: "ID غير صحيح" });
+
         const existing = await prisma.shippingAgentRecord.findUnique({
-            where: { id: parseInt(id) }
+            where: { id: numericId }
         });
 
-        if (!existing) {
-            return res.status(404).json({ error: "Record not found" });
-        }
+        if (!existing) return res.status(404).json({ error: "السجل غير موجود" });
 
-        await prisma.shippingAgentRecord.delete({
-            where: { id: parseInt(id) }
-        });
-        
-        return res.status(200).json({ success: true, message: "Deleted successfully" });
+        await prisma.shippingAgentRecord.delete({ where: { id: numericId } });
+        return res.status(200).json({ success: true, message: "تم الحذف بنجاح" });
     } catch (error) {
-        console.error("Delete Record Error:", error);
-        return res.status(500).json({ error: "Failed to delete" });
+        return res.status(500).json({ error: "حدث خطأ أثناء الحذف" });
     }
 });
 
-// [PUT] تحديث سجل
-router.put('/:id', upload.single('pdfFile'), async (req, res) => {
+// --- [PUT] تحديث سجل ---
+router.put('/:id', upload.single('pdfFile'), validate(shippingAgentRecordSchema), async (req, res) => {
     try {
+        const { id } = req.params;
         const data = req.body;
+        const numericId = parseInt(id);
+
+        if (isNaN(numericId)) return res.status(400).json({ error: "ID غير صحيح" });
+
         const updateData = {
             agentId: parseInt(data.agentId),
             date: new Date(data.date),
-            jobId: (data.jobId === 'none' || !data.jobId || data.jobId === "") ? null : parseInt(data.jobId),
+            jobId: (!data.jobId || data.jobId === 'none' || data.jobId === "") ? null : parseInt(data.jobId),
             blNumber: data.blNumber || '',
             country: data.country || '',
             containerCount: parseInt(data.containerCount) || 0,
@@ -95,12 +100,13 @@ router.put('/:id', upload.single('pdfFile'), async (req, res) => {
         }
 
         const updated = await prisma.shippingAgentRecord.update({
-            where: { id: parseInt(req.params.id) },
+            where: { id: numericId },
             data: updateData
         });
         return res.json(updated);
     } catch (error) {
-        return res.status(500).json({ error: error.message });
+        console.error("Update Record Error:", error);
+        return res.status(500).json({ error: "فشل في تحديث السجل" });
     }
 });
 

@@ -1,20 +1,44 @@
 import express from 'express';
 import * as financialController from '../controllers/financialController.js';
-import upload from '../middleware/upload.js'; // استدعاء الموديول المركزي
+import upload from '../middleware/upload.js'; 
+import { transactionSchema, validate } from '../middleware/validator.js'; // 1. استيراد الفلتر والعسكري
 
 const router = express.Router();
 
-// --- 1. جلب كل المعاملات المالية ---
+/**
+ * --- 1. جلب كل المعاملات المالية (GET) ---
+ * لا يحتاج لفحص الجسم (Body)، العمليات هنا جلب فقط.
+ */
 router.get('/', financialController.getTransactions);
 
-// --- 2. إضافة معاملة جديدة ---
-// بنستخدم upload.none() عشان نستقبل النصوص (Text fields) من الـ FormData
-router.post('/', upload.none(), financialController.createTransaction);
+/**
+ * --- 2. إضافة معاملة جديدة (POST) ---
+ * الترتيب: 
+ * 1. upload.none() لفك بيانات الـ FormData.
+ * 2. validate(transactionSchema) للتأكد من صحة البيانات والأنواع.
+ * 3. الكنترولر للتنفيذ.
+ */
+router.post(
+    '/', 
+    upload.none(), 
+    validate(transactionSchema), 
+    financialController.createTransaction
+);
 
-// --- 3. تحديث معاملة مالية ---
-router.put('/:id', upload.none(), financialController.updateTransaction);
+/**
+ * --- 3. تحديث معاملة مالية (PUT) ---
+ * نفس منطق الـ POST مع التأكد من صحة الـ ID.
+ */
+router.put(
+    '/:id', 
+    upload.none(), 
+    validate(transactionSchema), 
+    financialController.updateTransaction
+);
 
-// --- 4. حذف معاملة مالية ---
+/**
+ * --- 4. حذف معاملة مالية (DELETE) ---
+ */
 router.delete('/:id', financialController.deleteTransaction);
 
 export default router;

@@ -79,67 +79,78 @@ const openEdit = (a: ShippingAgent) => {
   };
 
  const handleSave = async () => {
-  if (!form.name.trim()) { 
-    toast.error('Please enter a name.'); 
-    return; 
-  }
-
-  // نحول البيانات لـ Object عادي لأننا رفعنا الملف بالفعل وحصلنا على الرابط
-  const payload = {
-    ...form,
-    // نضمن أن أي قيمة فارغة ترسل كـ null لتتوافق مع Postgres
-    company: form.company || null,
-    address: form.address || null,
-    telephone: form.telephone || null,
-    personalNumber: form.personalNumber || null,
-    email: form.email || null,
-    attachmentUrl: form.attachmentUrl || null
-  };
-
-  try {
-    const url = editing 
-      ? `http://localhost:5000/api/shipping-agents/${editing.id}` 
-      : 'http://localhost:5000/api/shipping-agents';
-    
-    // استخدام axios بطريقة مباشرة أسهل
-    if (editing) {
-      await axios.put(url, payload);
-    } else {
-      await axios.post(url, payload);
+    if (!form.name.trim()) { 
+      toast.error('Please enter a name.'); 
+      return; 
     }
 
-    toast.success(editing ? `"${form.name}" updated!` : `"${form.name}" added!`);
-    queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
-    setEditOpen(false);
-  } catch (error: any) {
-    console.error("Save Error:", error);
-    toast.error(error.response?.data?.error || 'Failed to save to database');
-  }
-};
+    const payload = {
+      ...form,
+      // نرسل القيم كما هي، والباك إند سيهتم بالتحقق
+      company: form.company || null,
+      address: form.address || null,
+      telephone: form.telephone || null,
+      personalNumber: form.personalNumber || null,
+      email: form.email || null,
+      // نرسل الرابط سواء كان قديماً أو مرفوعاً حديثاً
+      attachmentUrl: form.attachmentUrl || null 
+    };
+
+    try {
+      const url = editing 
+        ? `http://localhost:5000/api/shipping-agents/${editing.id}` 
+        : 'http://localhost:5000/api/shipping-agents';
+      
+      if (editing) {
+        await axios.put(url, payload);
+      } else {
+        await axios.post(url, payload);
+      }
+
+      toast.success(editing ? `"${form.name}" updated!` : `"${form.name}" added!`);
+      queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
+      setEditOpen(false);
+    } catch (error: any) {
+      console.error("Save Error:", error);
+      toast.error(error.response?.data?.error || 'Failed to save to database');
+    }
+  };
 const handleDelete = async () => {
     if (!deleting) return;
+    
+    const idToDelete = deleting.id;
+    const nameToDelete = deleting.name;
+
     try {
-        await axios.delete(`http://localhost:5000/api/shipping-agents/${deleting.id}`);
-        
-        // غلق النافذة وتصفير الحالة فوراً 🟢
+        // 1. اخفي المودال وصفر الـ State "فوراً" قبل أي شيء
         setDeleteOpen(false);
         setDeleting(null);
 
-        // تحديث البيانات عن طريق React Query فقط 🟢
-        queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
-        
-        toast.success('Deleted successfully');
-    } catch (error) {
-        // إذا اتمسح بالفعل، لا تظهر رسالة فشل
-        if (error.response?.status === 404 || error.message.includes('not found')) {
-            setDeleteOpen(false);
-            setDeleting(null);
+        // 2. نفذ الطلب في الخلفية
+        const response = await axios.delete(`http://localhost:5000/api/shipping-agents/${idToDelete}`);
+
+        // 3. لو السيرفر رد بنجاح (Status 200)
+        if (response.status === 200) {
+            toast.success(`"${nameToDelete}" removed successfully.`);
+            // تحديث البيانات من السيرفر للتأكد
+            queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
+        }
+
+    } catch (error: any) {
+        console.error("❌ Delete Error:", error);
+
+        // 4. لو السيرفر قال مش موجود (404) معناه اتمسح فعلاً فمش هنطلع Error
+        if (error.response?.status === 404) {
+            queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
             return;
         }
-        toast.error("Delete failed");
+
+        // فقط في حالة وجود خطأ حقيقي (مثل انقطاع الإنترنت)
+        toast.error("Could not delete record. Please check your connection.");
+        // نعيد تحديث البيانات لإظهار العنصر الذي فشل حذفه
+        queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
     }
 };
-
 
   if (isLoading) return <div className="p-8 text-center">Loading Agents...</div>;
 
@@ -247,11 +258,21 @@ const handleDelete = async () => {
             <div><Label>{t('Telephone', 'Telephone')}</Label><Input value={form.telephone} onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))} type="tel" dir="ltr" className="text-left" /></div>
             <div><Label>{t('Personal Number', 'Personal Number')}</Label><Input value={form.personalNumber} onChange={e => setForm(f => ({ ...f, personalNumber: e.target.value }))} type="tel" dir="ltr" className="text-left" /></div>
             <div><Label>{t('Email', 'Email')}</Label><Input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} type="email" /></div>
-            <div className="border-t pt-4 mt-2">
-              <Label>{t('Attachment (Photo/PDF/Excel)', 'Attachment (Photo/PDF/Excel)')}</Label>
-              <div className="flex items-center gap-3 mt-1">
-                <Input type="file" accept="image/*,.pdf,.xlsx,.xls,.csv" onChange={handleFileUpload} className="flex-1" />
-                {form.attachmentUrl && <Badge variant="default" className="bg-green-500 hover:bg-green-600 text-white shrink-0">Attached</Badge>}
+          <div className="border-t pt-4 mt-2">
+      <Label className="flex justify-between items-center">
+        {t('Attachment', 'Attachment')}
+        {form.attachmentUrl && (
+          <button 
+            onClick={() => setViewingFile(form.attachmentUrl)}
+            className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"
+          >
+            <Paperclip className="h-3 w-3" /> {t('View Current File', 'View Current File')}
+          </button>
+        )}
+      </Label>
+      <div className="flex items-center gap-3 mt-1">
+        <Input type="file" accept="image/*,.pdf,.xlsx,.xls,.csv" onChange={handleFileUpload} className="flex-1" />
+        {form.attachmentUrl && <Badge variant="default" className="bg-green-500 text-white shrink-0">Saved</Badge>}
               </div>
             </div>
           </div>

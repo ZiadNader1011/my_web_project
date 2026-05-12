@@ -80,32 +80,38 @@ const handleSave = async () => {
 const handleDelete = async () => {
   if (!deleting) return;
 
+  // نخزن الاسم في متغير ثابت عشان لو الـ state اتصفرت بسرعة الرسالة متطلعش فاضية
+  const clientName = deleting.name;
+
   try {
     // 1. تنفيذ طلب الحذف
     await axios.delete(`http://localhost:5000/api/clients/${Number(deleting.id)}`);
 
-    // 2. إغلاق المودال فوراً وتصفير حالة الحذف لتجنب تكرار الطلب ✅
-    setDeleteOpen(false);
-    
-    // 3. إظهار رسالة النجاح
-    toast.success(`"${deleting.name}" has been removed.`);
+    // 2. إظهار رسالة النجاح فوراً
+    toast.success(`"${clientName}" has been removed.`);
 
-    // 4. تحديث البيانات في الخلفية
-    queryClient.invalidateQueries({
+    // 3. إغلاق المودال وتصفير الحالة
+    setDeleteOpen(false);
+    setDeleting(null);
+
+    // 4. تحديث البيانات (يفضل يكون آخر حاجة)
+    await queryClient.invalidateQueries({
       queryKey: ['clients']
     });
-    
-    setDeleting(null);
 
   } catch (error: any) {
     console.error("Delete Error:", error);
+    
+    // إغلاق المودال في حالة الخطأ برضه عشان ميفضلش معلق
+    setDeleteOpen(false);
+
     if (error.response?.status === 404) {
-      setDeleteOpen(false);
       setDeleting(null);
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       return;
     }
 
+    // إظهار الخطأ فقط لو فعلاً السيرفر رجع فشل
     toast.error(
       error.response?.data?.error || 'Failed to delete client'
     );

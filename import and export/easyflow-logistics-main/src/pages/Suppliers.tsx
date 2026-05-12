@@ -115,17 +115,7 @@ const handleDelete = async () => {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-6">
         {suppliers.map((s: any) => {
-          const supplierProductsCount = products.filter((p: any) => {
-
-  if (Array.isArray(p.supplierIds)) {
-    return p.supplierIds.some(
-      (id: any) => String(id) === String(s.id)
-    );
-  }
-
-  return String(p.supplierId) === String(s.id);
-
-}).length;
+          const supplierProductsCount = s._count?.products || 0;
 
           return (
             <div key={s.id} className="rounded-xl bg-card p-5 border shadow-sm hover:shadow-md transition-all">

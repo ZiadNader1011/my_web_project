@@ -322,3 +322,10 @@ model User {
   role      String   @default("admin") 
   createdAt DateTime @default(now())
 }
+model BankBalance {
+  id        Int      @id @default(autoincrement())
+  bankName  String   @unique  // اسم البنك (مثل: CIB, QNB)
+  currency  String   @default("USD")
+  amount    Float    @default(0) // رصيد البداية الافتتاحي
+  updatedAt DateTime @updatedAt
+}

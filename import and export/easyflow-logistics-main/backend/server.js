@@ -6,6 +6,7 @@ import multer from 'multer';
 import cors from 'cors';
 import helmet from 'helmet';
 import { fileURLToPath } from 'url';
+import compression from 'compression';
 
 // حل مشكلة الـ BigInt
 BigInt.prototype.toJSON = function() { return Number(this) };
@@ -30,6 +31,7 @@ import operationRoutes from './routes/operationRoutes.js';
 import financialRoutes from './routes/financialRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import morgan from 'morgan';
+import bankRoutes from './routes/bankRoutes.js';
 
 const app = express();
 
@@ -51,12 +53,19 @@ const upload = multer({
 });
 
 // 2. Middlewares
-app.use(cors());
-app.use(helmet());
+app.use(cors({
+    origin: '*', // أو حددي رابط الفرونت إند بتاعك لزيادة الأمان
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static('uploads')); 
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(morgan('dev'));
+app.use(compression());
 
 // 3. استخدام الـ Routes
 app.use('/api/suppliers', supplierRoutes);
@@ -73,6 +82,7 @@ app.use('/api/operations', operationRoutes);
 app.use('/api/transactions', financialRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/banks', bankRoutes);
 // 4. مسار الرفع المباشر
 app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).send('No file uploaded.');

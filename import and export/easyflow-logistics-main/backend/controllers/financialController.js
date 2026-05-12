@@ -85,7 +85,8 @@ export const updateTransaction = async (req, res) => {
                 amount: data.amount ? parseFloat(data.amount) : undefined,
                 currency: data.currency ?? undefined,
                 date: data.date ? new Date(data.date) : undefined,
-                relatedId: data.relatedId === 'none' ? null : (data.relatedId ?? undefined),
+                relatedId: data.relatedId === 'none' ? null : (data.relatedId ? String(data.relatedId) : undefined),
+                
                 bank: data.bank !== undefined ? data.bank : undefined,
                 blNumber: data.blNumber !== undefined ? data.blNumber : undefined,
                 invoiceNumber: data.invoiceNumber !== undefined ? data.invoiceNumber : undefined,
@@ -100,42 +101,22 @@ export const updateTransaction = async (req, res) => {
 };
 
 
+
 export const deleteTransaction = async (req, res) => {
     try {
-        const { id } = req.params;
-        const numericId = parseInt(id);
-
-        // 1. التأكد أن الـ ID رقم صحيح وليس NaN
-        if (isNaN(numericId)) {
-            console.error("❌ Invalid ID received:", id);
-            return res.status(400).json({ error: "Invalid ID format" });
-        }
-
+        const numericId = parseInt(req.params.id);
         
-        const record = await prisma.transaction.findUnique({
+        // حذف مباشر بـ deleteMany عشان ميرميش Error لو الـ ID مش موجود
+        const result = await prisma.transaction.deleteMany({
             where: { id: numericId }
         });
 
-        if (!record) {
-            console.error(`❌ Record with ID ${numericId} not found in DB`);
-            return res.status(404).json({ error: "Record not found in database" });
+        if (result.count === 0) {
+            return res.status(404).json({ error: "Record not found" });
         }
 
-        await prisma.transaction.delete({
-            where: { id: numericId }
-        });
-
-        console.log(`✅ Transaction ${numericId} deleted successfully`);
-        return res.status(200).json({ 
-            success: true, 
-            message: "Deleted successfully" 
-        });
-
+        return res.status(200).json({ success: true, message: "Deleted" });
     } catch (error) {
-        console.error("❌ Delete Error Detail:", error.message);
-        return res.status(500).json({ 
-            error: "Server error", 
-            details: error.message 
-        });
+        return res.status(500).json({ error: "Server error" });
     }
 };

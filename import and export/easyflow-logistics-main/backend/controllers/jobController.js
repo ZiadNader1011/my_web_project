@@ -46,6 +46,7 @@ export const createJob = async (req, res) => {
 
         const newJob = await prisma.job.create({
             data: {
+                jobNumber: data.jobNumber?.trim() || `JO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
                 jobNumber: data.jobNumber || `JOB-${Date.now()}`,
                 title: data.title || "Untitled Job",
                 status: data.status || "active",
@@ -82,27 +83,36 @@ export const updateJob = async (req, res) => {
         const updatedJob = await prisma.job.update({
             where: { id: Number(id) },
             data: {
+                // تحديث الحقول الأساسية
                 title: data.title,
                 status: data.status,
                 operationType: data.operationType,
+                currency: data.currency, // تأكدي من إضافة هذا السطر
+                notes: data.notes,       // تأكدي من إضافة هذا السطر
+                
+                // تحديث المعرفات (IDs)
                 clientId: data.clientId && data.clientId !== 'none' ? Number(data.clientId) : null,
                 supplierId: data.supplierId && data.supplierId !== 'none' ? Number(data.supplierId) : null,
                 
+                // تحديث الحقول المالية (مع ضمان أنها أرقام)
                 discountPercentage: parseFloat(data.discountPercentage) || 0,
                 rawMaterialPricePerTon: parseFloat(data.rawMaterialPricePerTon) || 0,
                 rawMaterialWeight: parseFloat(data.rawMaterialWeight) || 0,
                 pettyCash: parseFloat(data.pettyCash) || 0,
 
-              
+                // تحديث المنتجات المرتبطة (مسح القديم وإضافة الجديد)
                 products: {
                     deleteMany: {}, 
-                    create: data.products?.map(p => ({
-                        productId: Number(p.productId),
-                        quantity: parseFloat(p.quantity) || 1,
-                        unitPrice: parseFloat(p.unitPrice) || 0,
-                        currency: p.currency || "USD",
-                        variety: p.variety || null
-                    }))
+                    create: (data.products || [])
+                        .filter(p => p.productId && p.productId !== 'none') // فلترة المنتجات غير الصالحة
+                        .map(p => ({
+                            productId: Number(p.productId),
+                            quantity: parseFloat(p.quantity) || 1,
+                            unitPrice: parseFloat(p.unitPrice) || 0,
+                            currency: p.currency || data.currency || "USD",
+                            variety: p.variety || null,
+                            // يمكنك إضافة الحقول الإضافية هنا مثل caliber و grade لو موجودة في الموديل
+                        }))
                 }
             }
         });
@@ -110,7 +120,7 @@ export const updateJob = async (req, res) => {
         res.json(updatedJob);
     } catch (error) {
         console.error("Update Job Error:", error);
-        res.status(400).json({ error: error.message });
+        res.status(400).json({ error: "فشل تحديث البيانات، تأكد من صحة المدخلات." });
     }
 };
 

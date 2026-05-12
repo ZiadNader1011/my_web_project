@@ -62,12 +62,20 @@ console.log("SUPPLIERS => ", suppliers);
   };
 
 const handleSave = async () => {
-  if (!form.name.trim()) { toast.error('Please enter a product name.'); return; }
+  if (!form.name.trim()) { 
+    toast.error('Please enter a product name.'); 
+    return; 
+  }
   
+  // تجهيز الـ Payload بشكل يضمن إن الأرقام مبعوثة صح
   const payload = {
-    ...form,
+    name: form.name,
+    category: form.category,
     numberOfSuppliers: Number(form.numberOfSuppliers) || 0,
-    supplierIds: form.supplierIds.filter(id => id !== '').slice(0, Number(form.numberOfSuppliers) || 0),
+    // تحويل الـ IDs لأرقام (Integers) والتأكد إنها مش مصفوفة فاضية
+    supplierIds: form.supplierIds
+      .filter(id => id !== '' && id !== null)
+      .map(id => Number(id)), 
   };
 
   try {
@@ -80,20 +88,47 @@ const handleSave = async () => {
     }
     queryClient.invalidateQueries({ queryKey: ['products'] });
     setEditOpen(false);
-  } catch (error) {
-    toast.error('Failed to save product to database');
+    setForm(emptyForm); // تصفير الفورم بعد النجاح
+  } catch (error: any) {
+    console.error("Save Error:", error.response?.data);
+    toast.error(error.response?.data?.error || 'Failed to save product to database');
   }
 };
 
- const handleDelete = async () => {
+const handleDelete = async () => {
+  // 1. لو مفيش عنصر أو فيه عملية حذف شغالة حالياً، اخرج فوراً
   if (!deleting) return;
+
+  // خدي نسخة من الاسم والـ ID
+  const productName = deleting.name;
+  const productId = deleting.id;
+
   try {
-    await axios.delete(`http://localhost:5000/api/products/${deleting.id}`);
-    queryClient.invalidateQueries({ queryKey: ['products'] });
-    toast.success(`"${deleting.name}" has been removed.`);
+    // 2. اقفلي المودال فوراً وصفرّي الـ State "قبل" ما تبعتي الطلب
+    // دي أهم خطوة عشان تمنعي أي نقرة تانية أو تداخل
     setDeleteOpen(false);
-    setDeleting(null);
-  } catch (error) {
+    setDeleting(null); 
+
+    // 3. ابعتي الطلب للسيرفر
+    await axios.delete(`http://localhost:5000/api/products/${productId}`);
+
+    // 4. لو نجح (الطلب الأول)
+    toast.success(`"${productName}" has been removed.`);
+
+    // 5. حديثي البيانات
+    queryClient.invalidateQueries({ queryKey: ['products'] });
+
+  } catch (error: any) {
+    // 6. لو الطلب فشل (أو لو ده الطلب التاني اللي لقى العنصر اتمسح خلاص)
+    console.error("Delete Error:", error);
+
+    // لو السيرفر قال مفيش عنصر (404)، ده معناه إنه اتمسح فعلاً، فمش هنطلع Error
+    if (error.response?.status === 404) {
+       queryClient.invalidateQueries({ queryKey: ['products'] });
+       return; 
+    }
+
+    // أي خطأ تاني حقيقي، نطلعه
     toast.error('Failed to delete product');
   }
 };

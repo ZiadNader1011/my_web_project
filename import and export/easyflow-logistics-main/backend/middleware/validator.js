@@ -51,7 +51,6 @@ export const containerSchema = Joi.object({
 
 // --- 6. سكيما العمليات (Job) ---
 export const jobSchema = Joi.object({
-    jobNumber: Joi.string().required(),
     title: Joi.string().required(),
     operationType: Joi.string().valid('export', 'import').default('export'),
     clientId: Joi.number().integer().allow(null),

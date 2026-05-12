@@ -106,7 +106,7 @@ const sumByCurrency = (type: string) => {
     setEditing(t);
     setForm({
       type: t.type,
-      relatedId: t.relatedId || 'none',
+      relatedId: t.relatedId ? String(t.relatedId) : 'none',
       amount: Number(t.amount).toString(),
       currency: t.currency,
       date: t.date ? new Date(t.date).toISOString().split('T')[0] : '',
@@ -146,15 +146,40 @@ const handleSave = async () => {
 }
 };
 
-  const handleDelete = async () => {
+const handleDelete = async () => {
   if (!deleting) return;
+
+  // خدي نسخة من الـ ID عشان نضمن استخدامه صح
+  const targetId = deleting.id;
+
   try {
-    await axios.delete(`http://localhost:5000/api/transactions/${deleting.id}`);
-    queryClient.invalidateQueries({ queryKey: ['transactions'] });
-    toast.success('Record removed.');
-    setDeleting(null);
+    // 1. ابعتي طلب الحذف للسيرفر
+    await axios.delete(`http://localhost:5000/api/transactions/${targetId}`);
+
+    // 2. اقفلي المودال وصفرّي الـ State فوراً (قبل الـ Toast والـ Invalidate)
+    // ده بيمنع أي Double Click أو محاولة إعادة رسم للعنصر الممسوح
     setDeleteOpen(false);
+    setDeleting(null);
+
+    // 3. ظهري رسالة النجاح
+    toast.success('Record removed successfully.');
+
+    // 4. حديثي البيانات في الجدول
+    queryClient.invalidateQueries({ queryKey: ['transactions'] });
+
   } catch (error) {
+    console.error("❌ Delete Error:", error);
+
+    // في حالة الخطأ، اقفلي المودال برضه عشان ميفضلش معلق
+    setDeleteOpen(false);
+
+    // لو السيرفر رد بـ 404 (يعني اتمسح فعلاً)، اعتبريه نجاح
+    if (error.response?.status === 404) {
+      setDeleting(null);
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      return;
+    }
+
     toast.error('Delete failed');
   }
 };

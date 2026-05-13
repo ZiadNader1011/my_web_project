@@ -1,4 +1,8 @@
-import { LayoutDashboard, Users, Wheat, Ship, Archive, ChevronLeft, Briefcase, DollarSign, Building2, PackageSearch, ClipboardList } from 'lucide-react';
+import { 
+  LayoutDashboard, Users, Wheat, Ship, Archive, ChevronLeft, 
+  Briefcase, DollarSign, Building2, PackageSearch, ClipboardList,
+  CheckSquare, MessageSquare // ✅ إضافة الأيقونات الجديدة
+} from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +29,11 @@ export function AppSidebar() {
   const navItems = [
     { title: t('common.dashboard', 'Dashboard'), url: '/', icon: LayoutDashboard },
     { title: t('common.jobs', 'Jobs'), url: '/jobs', icon: Briefcase },
+    // ✅ إضافة الـ To-Do List هنا
+    { title: t('common.todo', 'To-Do List'), url: '/todo', icon: CheckSquare },
     { title: t('common.clients', 'Clients'), url: '/clients', icon: Users },
+    // ✅ إضافة الـ Feedback هنا
+    { title: t('common.feedback', 'Feedback'), url: '/feedback', icon: MessageSquare },
     { title: t('common.suppliers', 'Suppliers'), url: '/suppliers', icon: Users },
     { title: t('common.products', 'Products'), url: '/products', icon: Wheat },
     { title: t('common.containers', 'Containers'), url: '/containers', icon: Ship },

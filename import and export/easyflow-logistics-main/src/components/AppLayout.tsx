@@ -37,4 +37,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </div>
     </SidebarProvider>
   );
+
+
+
+
+
+
+  
 }

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "react-router-dom";
 import { Moon, Sun, Languages, Home, Lock, LogOut, Menu, X } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -28,7 +28,7 @@ export function Header() {
       setLoginOpen(false);
       setPwd("");
       setErr("");
-      navigate({ to: "/" });
+  navigate("/"); 
     } else {
       setErr(t.auth.wrong);
     }
@@ -100,7 +100,7 @@ export function Header() {
             <button
               onClick={() => {
                 logoutAdmin();
-                navigate({ to: "/" });
+               navigate("/");
               }}
               className="hidden sm:inline-flex items-center gap-2 rounded-full border border-border bg-surface hover:bg-urgent-soft hover:text-urgent transition px-3 py-2 text-xs font-semibold text-foreground"
             >

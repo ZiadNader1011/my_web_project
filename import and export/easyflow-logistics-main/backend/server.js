@@ -32,6 +32,8 @@ import financialRoutes from './routes/financialRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import morgan from 'morgan';
 import bankRoutes from './routes/bankRoutes.js';
+import todoRoutes from './routes/todoRoutes.js';
+import feedbackRoutes from './routes/feedbackRoutes.js';
 
 const app = express();
 
@@ -83,6 +85,9 @@ app.use('/api/transactions', financialRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/banks', bankRoutes);
+
+app.use('/api/todos', todoRoutes);
+app.use('/api/feedback', feedbackRoutes);
 // 4. مسار الرفع المباشر
 app.post('/api/upload', upload.single('file'), (req, res) => {
     if (!req.file) return res.status(400).send('No file uploaded.');

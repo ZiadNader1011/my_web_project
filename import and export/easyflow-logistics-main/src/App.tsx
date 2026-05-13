@@ -56,10 +56,10 @@ const App = () => (
           {/* صفحة اللوجين خارج الـ AppLayout عشان تظهر شاشة كاملة */}
           <Route path="/login" element={<Login />} />
           
-          {/* توجيه الصفحة الرئيسية للوجين لو مفيش توكن */}
+          {}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          {/* كل الروتس الجاية محمية وموجودة جوه الـ AppLayout */}
+          {}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
           <Route path="/jobs/:id" element={<ProtectedRoute><JobDetails /></ProtectedRoute>} />

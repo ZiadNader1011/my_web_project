@@ -36,6 +36,7 @@ import todoRoutes from './routes/todoRoutes.js';
 import feedbackRoutes from './routes/feedbackRoutes.js';
 
 
+
 const app = express();
 
 // 1. إعداد مجلد الرفع
@@ -69,6 +70,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(morgan('dev'));
 app.use(compression());
+app.use(express.static('public'));
 
 // 3. استخدام الـ Routes
 app.use('/api/suppliers', supplierRoutes);

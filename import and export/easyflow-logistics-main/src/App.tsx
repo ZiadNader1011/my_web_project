@@ -4,6 +4,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import axios from 'axios';
+import { MyTasksPage } from "@/components/pages/MyTasksPage";
+import { SendPage } from "@/components/pages/SendPage";
+import { TaskProvider } from "@/store/tasks"; // تأكدي إن المسار ده صح عندك في المشروع
 
 // استيراد الصفحات
 import Login from "./pages/Login";
@@ -26,6 +29,8 @@ import PackingLists from "./pages/PackingLists";
 import Commissions from "./pages/Commissions";
 import Operations from "./pages/Operations";
 import NotFound from "./pages/NotFound";
+import { I18nProvider } from "./i18n/I18nProvider";
+import { AuthProvider } from "./auth/AuthProvider";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +54,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <I18nProvider>
+      <AuthProvider>
+      <TaskProvider>
     <TooltipProvider>
       <Sonner />
       <BrowserRouter>
@@ -61,6 +69,8 @@ const App = () => (
 
           {}
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/todo" element={<ProtectedRoute><MyTasksPage /></ProtectedRoute>} />
+<Route path="/feedback" element={<ProtectedRoute><SendPage /></ProtectedRoute>} />
           <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
           <Route path="/jobs/:id" element={<ProtectedRoute><JobDetails /></ProtectedRoute>} />
           <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
@@ -84,7 +94,11 @@ const App = () => (
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
+    </TaskProvider>
+    </AuthProvider>
+    </I18nProvider>
   </QueryClientProvider>
+ 
 );
 
 export default App;

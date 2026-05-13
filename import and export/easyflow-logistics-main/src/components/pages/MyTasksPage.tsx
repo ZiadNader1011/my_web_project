@@ -1,5 +1,4 @@
 import { CheckCircle2, Eye, RotateCcw } from "lucide-react";
-import { AppShell } from "@/components/AppShell";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useStore } from "@/store/tasks";
 import { PriorityBadge, PriorityDot, StatusBadge } from "@/components/Badges";
@@ -16,7 +15,8 @@ export function MyTasksPage() {
   );
 
   return (
-    <AppShell>
+    // ✅ استخدمنا Fragment <> بدلاً من AppShell لمنع تكرار الهيدر والسايدبار
+    <>
       <div className="px-6 lg:px-10 py-10 max-w-4xl mx-auto">
         <div className="mb-8">
           <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-semibold">
@@ -90,6 +90,7 @@ export function MyTasksPage() {
           </div>
         )}
       </div>
-    </AppShell>
+    </>
   );
 }
+export default MyTasksPage;

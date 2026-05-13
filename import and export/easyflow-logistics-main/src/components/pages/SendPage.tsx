@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "react-router-dom"; // تأكدي إن الاستيراد من هنا
 import { Send, CheckCircle2 } from "lucide-react";
-import { AppShell } from "@/components/AppShell";
+// ❌ تم حذف AppShell لمنع تداخل الهياكل (الـ Layout)
 import { useI18n } from "@/i18n/I18nProvider";
 import { useStore, type Priority } from "@/store/tasks";
 import { useAuth } from "@/auth/AuthProvider";
@@ -21,7 +21,8 @@ export function SendPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (!isAdmin) navigate({ to: "/" });
+    // حماية الصفحة: لو مش أدمن يرجعه للداشبورد
+    if (!isAdmin) navigate("/dashboard");
   }, [isAdmin, navigate]);
 
   const submit = (e: FormEvent) => {
@@ -32,11 +33,13 @@ export function SendPage() {
     }
     addTask({ title, description, assigneeId, priority, dueDate: dueDate || undefined });
     setSuccess(true);
-    setTimeout(() => navigate({ to: "/" }), 900);
+    // التوجيه لصفحة المهام بعد النجاح
+    setTimeout(() => navigate("/todo"), 900);
   };
 
   return (
-    <AppShell>
+    // ✅ استخدمنا Fragment <> بدلاً من AppShell
+    <>
       <div className="px-6 lg:px-10 py-10 max-w-3xl mx-auto">
         <div className="mb-8">
           <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-semibold">
@@ -141,10 +144,11 @@ export function SendPage() {
           </button>
         </form>
       </div>
-    </AppShell>
+    </>
   );
 }
 
+// مكونات مساعدة داخل نفس الملف
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
@@ -193,3 +197,5 @@ function DateInput({
     </Field>
   );
 }
+
+export default SendPage;

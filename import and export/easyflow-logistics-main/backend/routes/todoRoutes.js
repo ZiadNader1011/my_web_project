@@ -1,11 +1,14 @@
 import express from 'express';
-import { getTodos, createTodo, toggleTodo } from '../controllers/todoController.js';
-
 const router = express.Router();
 
-router.get('/', getTodos);
-router.post('/', createTodo);
-router.patch('/:id/toggle', toggleTodo);
+// مثال للـ Routes (عدليها حسب الكود اللي كان عندك بس بنفس الاستايل ده)
+router.get('/', async (req, res) => {
+    try {
+        // كود جلب البيانات هنا
+        res.json({ message: "Todo list working" });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
-// ✅ لازم السطر ده كمان
 export default router;

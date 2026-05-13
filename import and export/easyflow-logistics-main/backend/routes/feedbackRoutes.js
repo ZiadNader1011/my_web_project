@@ -1,10 +1,12 @@
 import express from 'express';
-import { getFeedbacks, createFeedback } from '../controllers/feedbackController.js';
-
 const router = express.Router();
 
-router.get('/', getFeedbacks);
-router.post('/', createFeedback);
+router.get('/', async (req, res) => {
+    try {
+        res.json({ message: "Feedback working" });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
-// ✅ السطر ده هو اللي ناقص ومسبب المشكلة
 export default router;

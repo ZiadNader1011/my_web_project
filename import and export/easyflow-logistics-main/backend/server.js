@@ -35,6 +35,7 @@ import bankRoutes from './routes/bankRoutes.js';
 import todoRoutes from './routes/todoRoutes.js';
 import feedbackRoutes from './routes/feedbackRoutes.js';
 
+
 const app = express();
 
 // 1. إعداد مجلد الرفع
@@ -85,7 +86,6 @@ app.use('/api/transactions', financialRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/banks', bankRoutes);
-
 app.use('/api/todos', todoRoutes);
 app.use('/api/feedback', feedbackRoutes);
 // 4. مسار الرفع المباشر

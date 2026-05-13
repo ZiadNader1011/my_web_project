@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate, Outlet } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import axios from 'axios';
 
-// استيراد الصفحات الأساسية
+// استيراد الصفحات
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Jobs from "./pages/Jobs";
@@ -27,14 +27,9 @@ import Commissions from "./pages/Commissions";
 import Operations from "./pages/Operations";
 import NotFound from "./pages/NotFound";
 
-
-
-import TodoList from "./pages/my-tasks"; 
-import Feedback from "./pages/send";     
-
 const queryClient = new QueryClient();
 
-// إعداد المحترض (Interceptor)
+// إعداد المحترض (Interceptor) لإرسال التوكن تلقائياً
 axios.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -43,63 +38,46 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
-// 🛡️ مكون حماية الروتس بنظام الـ Layout الموحد
-const ProtectedLayout = () => {
+// مكون لحماية الروتس (لو مفيش توكن يرجعه للوجين)
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem('token');
   if (!token) {
     return <Navigate to="/login" replace />;
   }
-  return (
-    <AppLayout>
-      <Outlet /> 
-    </AppLayout>
-  );
+  return <AppLayout>{children}</AppLayout>;
 };
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Sonner position="top-center" richColors />
+      <Sonner />
       <BrowserRouter>
         <Routes>
-          {/* 🔓 صفحة اللوجين (خارج الـ Layout) */}
+          {/* صفحة اللوجين خارج الـ AppLayout عشان تظهر شاشة كاملة */}
           <Route path="/login" element={<Login />} />
           
+          {}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          {/* 🔒 كل الروتس الجاية محمية وجوه الـ AppLayout تلقائياً */}
-          <Route element={<ProtectedLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            
-            {/* الشحن والعمليات */}
-            <Route path="/jobs" element={<Jobs />} />
-            <Route path="/jobs/:id" element={<JobDetails />} />
-            <Route path="/operations" element={<Operations />} />
-            <Route path="/containers" element={<Containers />} />
-            <Route path="/packing-lists" element={<PackingLists />} />
-            
-            {/* العملاء والموردين */}
-            <Route path="/clients" element={<Clients />} />
-            <Route path="/clients/:id" element={<ClientDetails />} />
-            <Route path="/suppliers" element={<Suppliers />} />
-            <Route path="/suppliers/:id" element={<SupplierDetails />} />
-            
-            {/* المالية والبنوك */}
-            <Route path="/financials" element={<Financials />} />
-            <Route path="/banks" element={<Banks />} />
-            <Route path="/commissions" element={<Commissions />} />
-            
-            {/* وكلاء الشحن والموظفين */}
-            <Route path="/shipping-agents" element={<ShippingAgents />} />
-            <Route path="/shipping-agents/:id" element={<ShippingAgentDetails />} />
-            <Route path="/employees" element={<Employees />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/archive" element={<ArchivePage />} />
-
-            {/* ✨ الأنظمة المضافة حديثاً (الربط الجديد) */}
-            <Route path="/todo" element={<TodoList />} />
-            <Route path="/feedback" element={<Feedback />} />
-          </Route>
+          {}
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
+          <Route path="/jobs/:id" element={<ProtectedRoute><JobDetails /></ProtectedRoute>} />
+          <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
+          <Route path="/clients/:id" element={<ProtectedRoute><ClientDetails /></ProtectedRoute>} />
+          <Route path="/suppliers" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
+          <Route path="/suppliers/:id" element={<ProtectedRoute><SupplierDetails /></ProtectedRoute>} />
+          <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
+          <Route path="/containers" element={<ProtectedRoute><Containers /></ProtectedRoute>} />
+          <Route path="/financials" element={<ProtectedRoute><Financials /></ProtectedRoute>} />
+          <Route path="/banks" element={<ProtectedRoute><Banks /></ProtectedRoute>} />
+          <Route path="/shipping-agents" element={<ProtectedRoute><ShippingAgents /></ProtectedRoute>} />
+          <Route path="/shipping-agents/:id" element={<ProtectedRoute><ShippingAgentDetails /></ProtectedRoute>} />
+          <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
+          <Route path="/packing-lists" element={<ProtectedRoute><PackingLists /></ProtectedRoute>} />
+          <Route path="/commissions" element={<ProtectedRoute><Commissions /></ProtectedRoute>} />
+          <Route path="/operations" element={<ProtectedRoute><Operations /></ProtectedRoute>} />
+          <Route path="/archive" element={<ProtectedRoute><ArchivePage /></ProtectedRoute>} />
 
           {/* صفحة 404 */}
           <Route path="*" element={<NotFound />} />

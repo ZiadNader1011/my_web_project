@@ -48,7 +48,7 @@ model Supplier {
   jobs     Job[]
 }
 
-// 3. موديل المعاملات المالية - تم دمج التعريفين وربطها بالعميل
+
 model Transaction {
   id            Int      @id @default(autoincrement())
   type          String // incoming, outgoing, petty_cash, raw_material, discount
@@ -62,7 +62,6 @@ model Transaction {
   weightInTons  Float?
   packages      Int?
 
-  // الربط مع العميل ✅
   clientId Int?
   client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
@@ -333,21 +332,4 @@ model BankBalance {
   updatedAt DateTime @updatedAt
 }
 
-model Todo {
-  id        Int      @id @default(autoincrement())
-  task      String
-  completed Boolean  @default(false)
-  createdAt DateTime @default(now())
-  jobId     Int?
-  job       Job?     @relation(fields: [jobId], references: [id], onDelete: Cascade)
-}
 
-model Feedback {
-  id        Int      @id @default(autoincrement())
-  user      String?
-  message   String
-  rating    Int      @default(5)
-  clientId  Int?
-  client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-}

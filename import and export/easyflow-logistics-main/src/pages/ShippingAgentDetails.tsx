@@ -140,47 +140,52 @@ export default function ShippingAgentDetails() {
   };
 
   const handleSave = async () => {
-    if (!form.date) { toast.error('Please select a date.'); return; }
+  if (!form.date) { toast.error('Please select a date.'); return; }
 
-    const formData = new FormData();
-    formData.append('agentId', String(agentIdNumber));
-    formData.append('date', form.date);
-    formData.append('jobId', (form.jobId === 'none' || !form.jobId) ? '' : form.jobId);
-    formData.append('blNumber', form.blNumber || '');
-    formData.append('country', form.country || '');
-    formData.append('containerCount', form.containerCount || '0');
-    formData.append('costEgp', form.costEgp || '0');
-    formData.append('costEuro', form.costEuro || '0');
-    formData.append('costUsd', form.costUsd || '0');
-    formData.append('costEgpNote', form.costEgpNote || '');
-    formData.append('costEuroNote', form.costEuroNote || '');
-    formData.append('costUsdNote', form.costUsdNote || '');
+  const formData = new FormData();
+  formData.append('agentId', String(agentIdNumber));
+  formData.append('date', form.date);
+  formData.append('jobId', (form.jobId === 'none' || !form.jobId) ? '' : form.jobId);
+  formData.append('blNumber', form.blNumber || '');
+  formData.append('country', form.country || '');
+  formData.append('containerCount', form.containerCount || '0');
+  formData.append('costEgp', form.costEgp || '0');
+  formData.append('costEuro', form.costEuro || '0');
+  formData.append('costUsd', form.costUsd || '0');
+  formData.append('costEgpNote', form.costEgpNote || '');
+  formData.append('costEuroNote', form.costEuroNote || '');
+  formData.append('costUsdNote', form.costUsdNote || '');
 
-    if (form.fileObject) {
-      formData.append('pdfFile', form.fileObject);
-    }
+  // ✅ التعديل الجوهري هنا:
+  // لو فيه ملف جديد ارفعيه، لو مفيش ابعتي الرابط القديم عشان الباك إند ميمسحهوش
+  if (form.fileObject) {
+    formData.append('pdfFile', form.fileObject);
+  } else if (editing && form.pdfUrl) {
+    formData.append('pdfUrl', form.pdfUrl); 
+  }
 
-    try {
-      const baseUrl = 'http://localhost:5000/api/shipping-agent-records';
-      const url = editing ? `${baseUrl}/${editing.id}` : baseUrl;
-      const method = editing ? 'put' : 'post';
+  try {
+    const baseUrl = 'http://localhost:5000/api/shipping-agent-records';
+    const url = editing ? `${baseUrl}/${editing.id}` : baseUrl;
+    const method = editing ? 'put' : 'post';
 
-      await axios({
-        method,
-        url,
-        data: formData,
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+    await axios({
+      method,
+      url,
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
 
-      toast.success(editing ? 'Updated!' : 'Saved to Database!');
-      queryClient.invalidateQueries({ queryKey: ['shippingAgentRecords'] });
-      queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
-      setEditOpen(false);
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to save data");
-    }
-  }; 
+    toast.success(editing ? 'Updated!' : 'Saved to Database!');
+    
+    // ✅ تحديث البيانات يدوياً لأنك لا تستخدمي useQuery هنا للـ Agents
+    fetchData(); 
+    setEditOpen(false);
+  } catch (error) {
+    console.error(error);
+    toast.error("Failed to save data");
+  }
+};
 
 const handleDelete = async () => {
   if (!deleting) return;

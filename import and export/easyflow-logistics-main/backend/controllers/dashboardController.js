@@ -1,46 +1,105 @@
-import { prisma } from '../lib/prisma.js'; 
-
+import { prisma } from '../lib/prisma.js';
 
 export const getDashboardSummary = async (req, res) => {
   try {
-    // 1. تحديث الـ Materialized View لضمان دقة الأرقام
-    await prisma.$executeRaw`REFRESH MATERIALIZED VIEW dashboard_view;`;
 
-    // 2. جلب البيانات المالية المحسوبة مسبقاً من الـ View
-    const summaryView = await prisma.$queryRaw`SELECT * FROM dashboard_view`;
-    const data = summaryView[0];
+    const [
+      recentJobs,
+      transactions,
+      containers,
+      products,
+      totalJobsCount
+    ] = await Promise.all([
+      prisma.job.findMany({
+        include: {
+          client: {
+            select: { name: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5
+      }),
 
-    // 3. جلب البيانات الديناميكية (آخر 5 عمليات)
-    const recentJobs = await prisma.job.findMany({
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      include: { 
-        client: { select: { name: true } } 
-      }
+      prisma.transaction.findMany(),
+
+      prisma.container.findMany(),
+
+      prisma.product.findMany(),
+
+      prisma.job.count()
+    ]);
+
+ const usdJobs = await prisma.job.findMany({
+  where: { currency: 'USD' }
+});
+
+const egpJobs = await prisma.job.findMany({
+  where: { currency: 'EGP' }
+});
+
+const totalUSD = usdJobs.reduce((sum, job) => {
+  return sum + (
+    Number(job.rawMaterialWeight || 0) *
+    Number(job.rawMaterialPricePerTon || 0)
+  );
+}, 0);
+
+const totalEGP = egpJobs.reduce((sum, job) => {
+  return sum + (
+    Number(job.rawMaterialWeight || 0) *
+    Number(job.rawMaterialPricePerTon || 0)
+  );
+}, 0);
+
+    // Transactions
+    const incoming = await prisma.transaction.aggregate({
+      where: { type: 'incoming' },
+      _sum: { amount: true }
     });
 
-    // 4. تجميع الكائن النهائي
+    const outgoing = await prisma.transaction.aggregate({
+      where: { type: 'outgoing' },
+      _sum: { amount: true }
+    });
+
+    const activeContainers = containers.filter(
+      c => c.status !== 'cleared'
+    );
+
     const summary = {
       totalSales: {
-        USD: Number(data?.total_sales_usd || 0),
-        EGP: Number(data?.total_sales_egp || 0)
+     USD: totalUSD,
+     EGP: totalEGP
       },
-      clientDebt: Number(data?.client_payments || 0),
-      supplierDebt: Number(data?.supplier_cost || 0),
-      agentCost: Number(data?.agent_cost || 0),
+
+      clientDebt: Number(incoming._sum.amount || 0),
+
+      supplierDebt: Number(outgoing._sum.amount || 0),
+
+      agentCost: 0,
+
       stats: {
-        totalJobs: Number(data?.jobs_count || 0),
-        activeContainers: Number(data?.active_containers || 0),
-        totalProducts: Number(data?.products_count || 0),
-        totalTransactions: Number(data?.transactions_count || 0),
+        totalJobs: totalJobsCount,
+        activeContainers: activeContainers.length,
+        totalProducts: products.length,
+        totalTransactions: transactions.length
       },
-      recentJobs: recentJobs,
-      lastUpdated: data?.last_updated
+
+      recentJobs,
+
+      activeShipments: activeContainers.slice(0, 5)
     };
 
+    console.log(summary);
+
     res.json(summary);
+
   } catch (error) {
-    console.error("Dashboard Enterprise Error:", error);
-    res.status(500).json({ error: "Internal Server Error - Check Database View" });
+
+    console.error('❌ Dashboard Error:', error);
+
+    res.status(500).json({
+      error: 'Internal Server Error'
+    });
   }
 };

@@ -147,26 +147,45 @@ const handleSave = async () => {
   }
 };
 
+// 1. بره الدالة، عرفي متغير بسيط عشان يمنع التكرار
+let isDeleting = false; 
+
 const handleDelete = async () => {
-  if (!deleting) return;
+  if (!deleting || isDeleting) return; // لو العملية شغالة، متعملش حاجة تانية
+  
+  isDeleting = true; // اقفلي البوابة
+  const itemName = deleting.clientName || 'Commission';
 
   try {
-    
-    await axios.delete(`http://localhost:5000/api/commissions/${deleting.id}`);
-    
-    
-    setDeleteOpen(false);
-   
-    await queryClient.invalidateQueries({ queryKey: ['commissions'] });
-    
-    
-    setDeleting(null);
+    // 2. ابعتي الطلب واستني الرد "كاملاً"
+    const response = await axios.delete(`http://localhost:5000/api/commissions/${deleting.id}`);
 
-    toast.success(t('Commission removed'));
+    if (response.status === 200 || response.status === 204) {
+      // 3. اقفلي المودال فوراً عشان اليوزر ميدوسش تاني
+      setDeleteOpen(false);
 
+      // 4. حدثي البيانات واستني التحديث يخلص
+      await queryClient.invalidateQueries({ queryKey: ['commissions'] });
+      
+      // 5. اطلعي رسالة النجاح فقط
+      toast.success(`"${itemName}" اتمسح بنجاح`);
+      
+      // 6. صفي الحالة
+      setDeleting(null);
+    }
   } catch (error) {
-    console.error("Delete Error:", error);
-    toast.error('Delete failed'); 
+    // 7. لو السيرفر قال 404 (يعني اتمسح فعلاً)، اعتبريه نجاح واسكتي
+    if (error.response?.status === 404) {
+      setDeleteOpen(false);
+      setDeleting(null);
+      await queryClient.invalidateQueries({ queryKey: ['commissions'] });
+      return; 
+    }
+    
+    console.error(error);
+    toast.error('فشل الحذف.. تأكد من السيرفر');
+  } finally {
+    isDeleting = false; // افتحي البوابة تاني للعمليات الجاية
   }
 };
 

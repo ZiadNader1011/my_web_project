@@ -62,59 +62,68 @@ const openEdit = (a: ShippingAgent) => {
   setEditOpen(true);
 };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const formData = new FormData();
-    formData.append('file', file);
+  const formData = new FormData();
+  formData.append('file', file);
 
-    try {
-      const res = await axios.post('http://localhost:5000/api/upload', formData);
-      setForm(f => ({ ...f, attachmentUrl: res.data.url }));
-      toast.success('File uploaded successfully');
-    } catch (error) {
-      toast.error('File upload failed');
-    }
+  // اظهر لودنج عشان اليوزر يستنى
+  const loadingToast = toast.loading('Uploading new file...');
+
+  try {
+    const res = await axios.post('http://localhost:5000/api/upload', formData);
+    setForm(f => ({ ...f, attachmentUrl: res.data.url }));
+    toast.dismiss(loadingToast);
+    toast.success('New file ready to save');
+  } catch (error) {
+    toast.dismiss(loadingToast);
+    toast.error('Upload failed - keeping old file');
+  }
+};
+
+const handleSave = async () => {
+  if (!form.name.trim()) { 
+    toast.error('Please enter a name.'); 
+    return; 
+  }
+
+  // ✅ التأكد من جلب البيانات الأصلية للوكيل لو إحنا في وضع التعديل
+  const originalAgent = editing ? agents.find(a => a.id === editing.id) : null;
+
+  const payload = {
+    ...form,
+    company: form.company || null,
+    address: form.address || null,
+    telephone: form.telephone || null,
+    personalNumber: form.personalNumber || null,
+    email: form.email || null,
+    // ✅ الحماية: لو الـ attachmentUrl في الفورم فاضي بس كان موجود أصلاً في الداتابيز، نرجعه تاني
+    attachmentUrl: form.attachmentUrl || (originalAgent ? originalAgent.attachmentUrl : null)
   };
 
- const handleSave = async () => {
-    if (!form.name.trim()) { 
-      toast.error('Please enter a name.'); 
-      return; 
+  try {
+    const url = editing 
+      ? `http://localhost:5000/api/shipping-agents/${editing.id}` 
+      : 'http://localhost:5000/api/shipping-agents';
+    
+    if (editing) {
+      await axios.put(url, payload);
+    } else {
+      await axios.post(url, payload);
     }
 
-    const payload = {
-      ...form,
-      // نرسل القيم كما هي، والباك إند سيهتم بالتحقق
-      company: form.company || null,
-      address: form.address || null,
-      telephone: form.telephone || null,
-      personalNumber: form.personalNumber || null,
-      email: form.email || null,
-      // نرسل الرابط سواء كان قديماً أو مرفوعاً حديثاً
-      attachmentUrl: form.attachmentUrl || null 
-    };
-
-    try {
-      const url = editing 
-        ? `http://localhost:5000/api/shipping-agents/${editing.id}` 
-        : 'http://localhost:5000/api/shipping-agents';
-      
-      if (editing) {
-        await axios.put(url, payload);
-      } else {
-        await axios.post(url, payload);
-      }
-
-      toast.success(editing ? `"${form.name}" updated!` : `"${form.name}" added!`);
-      queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
-      setEditOpen(false);
-    } catch (error: any) {
-      console.error("Save Error:", error);
-      toast.error(error.response?.data?.error || 'Failed to save to database');
-    }
-  };
+    toast.success(editing ? `"${form.name}" updated!` : `"${form.name}" added!`);
+    
+    // ✅ تحديث الكاش وإغلاق المودال بترتيب صحيح
+    await queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
+    setEditOpen(false);
+  } catch (error: any) {
+    console.error("Save Error:", error);
+    toast.error(error.response?.data?.error || 'Failed to save to database');
+  }
+};
 const handleDelete = async () => {
     if (!deleting) return;
     
@@ -258,23 +267,43 @@ const handleDelete = async () => {
             <div><Label>{t('Telephone', 'Telephone')}</Label><Input value={form.telephone} onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))} type="tel" dir="ltr" className="text-left" /></div>
             <div><Label>{t('Personal Number', 'Personal Number')}</Label><Input value={form.personalNumber} onChange={e => setForm(f => ({ ...f, personalNumber: e.target.value }))} type="tel" dir="ltr" className="text-left" /></div>
             <div><Label>{t('Email', 'Email')}</Label><Input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} type="email" /></div>
-          <div className="border-t pt-4 mt-2">
-      <Label className="flex justify-between items-center">
-        {t('Attachment', 'Attachment')}
-        {form.attachmentUrl && (
-          <button 
-            onClick={() => setViewingFile(form.attachmentUrl)}
-            className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"
-          >
-            <Paperclip className="h-3 w-3" /> {t('View Current File', 'View Current File')}
-          </button>
-        )}
-      </Label>
-      <div className="flex items-center gap-3 mt-1">
-        <Input type="file" accept="image/*,.pdf,.xlsx,.xls,.csv" onChange={handleFileUpload} className="flex-1" />
-        {form.attachmentUrl && <Badge variant="default" className="bg-green-500 text-white shrink-0">Saved</Badge>}
-              </div>
-            </div>
+       <div className="border-t pt-4 mt-2">
+  <Label className="flex justify-between items-center mb-2">
+    {t('Attachment', 'Attachment')}
+    {/* ✅ لو فيه ملف قديم، نظهر زرار للمعاينة واسم الملف */}
+    {form.attachmentUrl && (
+      <button 
+        type="button" // مهم جداً عشان ما يعملش Submit للفورم
+        onClick={() => setViewingFile(form.attachmentUrl)}
+        className="text-[11px] text-blue-600 hover:bg-blue-50 px-2 py-1 rounded border border-blue-200 flex items-center gap-1 transition-colors"
+      >
+        <Paperclip className="h-3 w-3" /> {t('View Current File', 'View Current File')}
+      </button>
+    )}
+  </Label>
+  
+  <div className="flex flex-col gap-2">
+    <div className="flex items-center gap-3">
+      <Input 
+        type="file" 
+        accept="image/*,.pdf,.xlsx,.xls,.csv" 
+        onChange={handleFileUpload} 
+        className="flex-1 file:bg-blue-50 file:text-blue-700 file:border-0 file:rounded-md" 
+      />
+      {form.attachmentUrl && (
+        <Badge variant="default" className="bg-green-500 text-white shrink-0 shadow-sm">
+          ✓ Loaded
+        </Badge>
+      )}
+    </div>
+    {/* نص توضيحي للمستخدم */}
+    {form.attachmentUrl && (
+      <p className="text-[10px] text-muted-foreground italic">
+        * Uploading a new file will replace the current one.
+      </p>
+    )}
+  </div>
+</div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>{t('Cancel', 'Cancel')}</Button>

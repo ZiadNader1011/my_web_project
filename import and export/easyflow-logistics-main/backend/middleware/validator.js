@@ -115,8 +115,6 @@ export const packingListSchema = Joi.object({
     pod: Joi.string().allow('', null), // Port of Discharge
     finalDestination: Joi.string().allow('', null),
     numberOfContainers: Joi.number().integer().min(0).default(0),
-    jobId: Joi.number().integer().allow(null),
-    // بنسمح بالبيانات اللي بتتبعت كـ JSON String من الفرونت إند
     containerNumbers: Joi.any(),
     products: Joi.any(),
     attachments: Joi.any()

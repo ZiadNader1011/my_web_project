@@ -78,7 +78,7 @@ export const updateAgent = async (req, res) => {
         telephone: data.telephone ?? undefined,
         personalNumber: data.personalNumber ?? undefined,
         email: data.email ?? undefined,
-        attachmentUrl: fileUrl // سيأخذ القيمة الجديدة أو يحافظ على القديمة
+attachmentUrl: fileUrl === undefined ? existing.attachmentUrl : fileUrl
       }
     });
     

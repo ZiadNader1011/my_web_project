@@ -27,8 +27,14 @@ export default function Operations() {
       return res.data;
     }
   });
+  const { data: jobs = [] } = useQuery({
+  queryKey: ['jobs'],
+  queryFn: async () => {
+    const res = await axios.get('http://localhost:5000/api/jobs');
+    return res.data;
+  }
+});
   const { t } = useTranslation();
-  const jobs = getJobs();
   const clients = getClients();
   const containers = getContainers();
 
@@ -108,71 +114,88 @@ const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     }));
   };
 
-const handleSave = async () => {
-  const formData = new FormData();
+let isSaving = false;
 
-  // إرسال كل القيم من الفورم للـ FormData
-  formData.append('operationDate', form.operationDate);
-  formData.append('loadingDate', form.loadingDate);
-  formData.append('clientName', form.clientName);
-  formData.append('jobId', form.jobId);
-  formData.append('product', form.product);
-  formData.append('quantity', form.quantity);
-  formData.append('numberOfContainers', form.numberOfContainers);
-  formData.append('containerNumber', form.containerNumber); // 👈 تأكدي من إضافة هذا
-  formData.append('responsiblePerson', form.responsiblePerson); // 👈 وهذا
-  formData.append('qualityRepresentative', form.qualityRepresentative); // 👈 وهذا
-  formData.append('notes', form.notes);
+  const handleSave = async () => {
+    if (isSaving) return;
+    isSaving = true;
 
-  // إرسال المرفقات القديمة كـ JSON string (مهم جداً للكنترولر)
-  formData.append('attachments', JSON.stringify(form.attachments));
+    const formData = new FormData();
 
-  // إرسال الملفات الجديدة
-  selectedFiles.forEach((file) => {
-    formData.append('attachments', file); // تأكدي أن الاسم هنا 'attachments' ليطابق الروت
-  });
+    // 1. إضافة كل الحقول النصية
+    formData.append('operationDate', form.operationDate);
+    formData.append('loadingDate', form.loadingDate);
+    formData.append('clientName', form.clientName || '');
+    formData.append('jobId', form.jobId || '');
+    formData.append('product', form.product || '');
+    formData.append('quantity', form.quantity || '');
+    formData.append('numberOfContainers', form.numberOfContainers || '');
+    formData.append('containerNumber', form.containerNumber || '');
+    formData.append('responsiblePerson', form.responsiblePerson || '');
+    formData.append('qualityRepresentative', form.qualityRepresentative || '');
+    formData.append('notes', form.notes || '');
 
-  try {
-    const url = editing 
-      ? `http://localhost:5000/api/operations/${editing.id}` 
-      : 'http://localhost:5000/api/operations';
-    
-    if (editing) {
-       await axios.put(url, formData);
-    } else {
-       await axios.post(url, formData);
+    // 2. معالجة المرفقات: 
+    // نفصل الروابط القديمة (التي لا تبدأ بـ blob:) عشان السيرفر يحتفظ بيها
+    const existingAttachments = form.attachments.filter(att => !att.url.startsWith('blob:'));
+    formData.append('existingAttachments', JSON.stringify(existingAttachments));
+
+    // 3. إضافة الملفات الجديدة فعلياً
+    selectedFiles.forEach((file) => {
+      formData.append('attachments', file); 
+    });
+
+    try {
+      const url = editing 
+        ? `http://localhost:5000/api/operations/${editing.id}` 
+        : 'http://localhost:5000/api/operations';
+      
+      const method = editing ? 'put' : 'post';
+
+      await axios({
+        method,
+        url,
+        data: formData,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      // نجاح العملية
+      toast.success(editing ? 'Operation Updated!' : 'Operation Created!');
+      
+      // تحديث البيانات وإغلاق المودال
+      await queryClient.invalidateQueries({ queryKey: ['shipmentOperations'] });
+      setEditOpen(false);
+      setSelectedFiles([]); // تصغير قائمة الملفات المختارة
+    } catch (error: any) {
+      console.error("Save Error:", error);
+      toast.error(error.response?.data?.error || 'Failed to save operation');
+    } finally {
+      isSaving = false;
     }
-
-    queryClient.invalidateQueries({ queryKey: ['shipmentOperations'] });
-    setSelectedFiles([]);
-    setEditOpen(false);
-    toast.success('Saved successfully!');
-  } catch (error) {
-    console.error(error);
-    toast.error('Failed to save files');
-  }
-};
+  };
 
 const handleDelete = async () => {
-  if (!deleting) return;
-  try {
-    await axios.delete(`http://localhost:5000/api/operations/${deleting.id}`);
-    
-    // تحديث الواجهة
-    queryClient.invalidateQueries({ queryKey: ['shipmentOperations'] });
-    toast.success(t('Operation removed'));
-    setDeleteOpen(false);
-    setDeleting(null);
-  } catch (error: any) {
-    if (error.response?.status === 404) {
+    if (!deleting) return;
+    const opName = deleting.clientName || 'Operation';
+
+    try {
+      await axios.delete(`http://localhost:5000/api/operations/${deleting.id}`);
+      
+      // الترتيب الصح عشان الرسايل المتناقضة
       setDeleteOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['shipmentOperations'] });
+      toast.success(`${opName} removed successfully`);
       setDeleting(null);
-      queryClient.invalidateQueries({ queryKey: ['shipmentOperations'] });
-      return;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        setDeleteOpen(false);
+        setDeleting(null);
+        queryClient.invalidateQueries({ queryKey: ['shipmentOperations'] });
+        return;
+      }
+      toast.error('Delete failed');
     }
-    toast.error('Delete failed');
-  }
-};
+  };
 if (isLoading) return <div className="flex h-96 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
 
   return (
@@ -299,19 +322,36 @@ if (isLoading) return <div className="flex h-96 items-center justify-center"><Lo
               <DatePicker value={form.loadingDate} onChange={v => setForm(f => ({ ...f, loadingDate: v }))} />
             </div>
 
-            <div>
-              <Label>{t('Link to Job', 'ربط بالعملية')}</Label>
-              <Select value={form.jobId} onValueChange={(v) => {
-                const j = jobs.find(x => x.id === v);
-                setForm(f => ({ ...f, jobId: v, clientName: j ? clients.find(c => c.id === j.clientId)?.name || f.clientName : f.clientName, numberOfContainers: j ? j.numberOfContainers?.toString() || f.numberOfContainers : f.numberOfContainers, containerNumber: j && j.containerId ? containers.find(c => c.id === j.containerId)?.containerNumber || f.containerNumber : f.containerNumber }));
-              }}>
-                <SelectTrigger><SelectValue placeholder="Select a job" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Link</SelectItem>
-                  {jobs.map(j => <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+           <div>
+  <Label>{t('Link to Job', 'ربط بالعملية')}</Label>
+  <Select 
+    value={form.jobId} 
+    onValueChange={(v) => {
+      const selectedJob = jobs.find(x => x.id === v);
+      // تحديث الفورم بالبيانات التلقائية من الوظيفة المختارة
+      setForm(f => ({ 
+        ...f, 
+        jobId: v, 
+        clientName: selectedJob?.clientName || f.clientName,
+        numberOfContainers: selectedJob?.numberOfContainers?.toString() || f.numberOfContainers,
+        containerNumber: selectedJob?.containerNumber || f.containerNumber
+      }));
+    }}
+  >
+    <SelectTrigger>
+      <SelectValue placeholder="Select a job" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="none">No Link</SelectItem>
+      {/* ✅ عرض الوظائف الحقيقية هنا */}
+      {jobs.map(j => (
+        <SelectItem key={j.id} value={j.id}>
+          {j.jobNumber} - {j.title || j.clientName}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+</div>
 
             <div>
               <Label>{t('Client Name', 'اسم العميل')}</Label>

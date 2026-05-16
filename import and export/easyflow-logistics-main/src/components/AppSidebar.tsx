@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/sidebar';
 
 
+
 export function AppSidebar() {
   const { state, toggleSidebar } = useSidebar();
   const collapsed = state === 'collapsed';
@@ -30,11 +31,7 @@ export function AppSidebar() {
   const navItems = [
     { title: t('common.dashboard', 'Dashboard'), url: '/', icon: LayoutDashboard },
     { title: t('common.jobs', 'Jobs'), url: '/jobs', icon: Briefcase },
-    // ✅ إضافة الـ To-Do List هنا
-    { title: t('common.todo', 'To-Do List'), url: '/todo', icon: CheckSquare },
     { title: t('common.clients', 'Clients'), url: '/clients', icon: Users },
-    // ✅ إضافة الـ Feedback هنا
-    { title: t('common.feedback', 'Feedback'), url: '/feedback', icon: MessageSquare },
     { title: t('common.suppliers', 'Suppliers'), url: '/suppliers', icon: Users },
     { title: t('common.products', 'Products'), url: '/products', icon: Wheat },
     { title: t('common.containers', 'Containers'), url: '/containers', icon: Ship },

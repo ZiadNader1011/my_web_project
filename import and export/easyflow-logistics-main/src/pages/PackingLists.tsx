@@ -189,16 +189,39 @@ export default function PackingLists() {
   }
 };
 
- const handleDelete = async () => {
+const handleDelete = async () => {
   if (!deleting) return;
+  
+  // 1. خدي نسخة من الاسم عشان الرسالة
+  const itemName = deleting.clientName || deleting.clientName || 'Record';
+
   try {
-    await axios.delete(`http://localhost:5000/api/packing-lists/${deleting.id}`);
-    queryClient.invalidateQueries({ queryKey: ['packingLists'] });
-    toast.success('Packing List removed');
-    setDeleting(null);
+    // 2. ابعتي الطلب واستني الرد
+    const response = await axios.delete(`http://localhost:5000/api/packing-lists/${deleting.id}`);
+
+    // 3. تأكدي إن الكود ناجح (200 أو 204)
+    if (response.status === 200 || response.status === 204) {
+      toast.success(`"${itemName}" اتمسح بنجاح`);
+    }
+
+    // 4. الترتيب هنا مهم جداً: اقفلي المودال الأول وبعدين حدثي البيانات
     setDeleteOpen(false);
-  } catch (error) {
-    toast.error('Delete failed');
+    setDeleting(null);
+    
+    // 5. تحديث البيانات في الخلفية
+    queryClient.invalidateQueries(); 
+
+  } catch (error: any) {
+    // 6. لو اتمسح فعلاً بس السيرفر رد متأخر أو بـ 404، متبينيش إيرور لليوزر
+    if (error.response?.status === 404) {
+      setDeleteOpen(false);
+      setDeleting(null);
+      queryClient.invalidateQueries();
+      return; 
+    }
+
+    console.error("Delete Error:", error);
+    toast.error('فشل الحذف.. تأكد من اتصال السيرفر');
   }
 };
 if (isLoading) return (

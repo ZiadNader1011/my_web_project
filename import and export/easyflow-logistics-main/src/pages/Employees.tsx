@@ -72,14 +72,39 @@ const handleSave = async () => {
 
 const handleDelete = async () => {
   if (!deleting) return;
+  
+  // حفظ الاسم عشان نطلعه في الـ Toast قبل ما يتصفر الـ State
+  const empName = deleting.name;
+
   try {
-    await axios.delete(`http://localhost:5000/api/employees/${deleting.id}`);
+    // 1. تنفيذ المسح
+    const response = await axios.delete(`http://localhost:5000/api/employees/${deleting.id}`);
+    
+    // 2. التحقق من النجاح (لو الباك إند بيرجع داتا أو كود نجاح)
+    if (response.status === 200 || response.status === 204) {
+      toast.success(`${empName} removed successfully`);
+    }
+
+    // 3. تحديث البيانات فوراً
     queryClient.invalidateQueries({ queryKey: ['employees'] });
-    toast.success('Employee removed');
+    
+    // 4. إغلاق المودال وتصفير الـ State
     setDeleteOpen(false);
     setDeleting(null);
-  } catch (error) {
-    toast.error('Delete failed');
+    
+  } catch (error: any) {
+    console.error("❌ Delete Error:", error);
+    
+    // حماية إضافية: لو السيرفر رجع 404 (يعني اتمسح فعلاً أو مش موجود) اعتبريها نجاح
+    if (error.response?.status === 404) {
+       toast.success(`${empName} was already removed`);
+       queryClient.invalidateQueries({ queryKey: ['employees'] });
+       setDeleteOpen(false);
+       setDeleting(null);
+       return;
+    }
+
+    toast.error('Could not complete delete operation');
   }
 };
 if (loadingEmps || loadingTrans) return (

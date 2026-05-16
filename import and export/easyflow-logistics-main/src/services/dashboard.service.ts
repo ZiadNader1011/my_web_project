@@ -1,58 +1,48 @@
 import { prisma } from '../../backend/lib/prisma.js';
 
 export const getDashboardData = async () => {
+  // 1. جلب البيانات الأساسية بالتوازي
   const [
     jobs,
-    clients,
-    suppliers,
-    transactions,
     containers,
-    products
+    products,
+    transactions,
+    summaryView // جلب البيانات المحسوبة من الـ View
   ] = await Promise.all([
     prisma.job.findMany({
-      include: {
-        products: true
-      }
+      take: 5,
+      orderBy: { createdAt: 'desc' },
+      include: { client: { select: { name: true } } }
     }),
-
-    prisma.client.findMany(),
-
-    prisma.supplier.findMany(),
-
-    prisma.transaction.findMany(),
-
     prisma.container.findMany(),
-
-    prisma.product.findMany()
+    prisma.product.findMany(),
+    prisma.transaction.findMany(),
+    prisma.$queryRaw`SELECT * FROM dashboard_view LIMIT 1`
   ]);
 
-  
+  const data = summaryView[0] || {};
 
-  const totalSales = await prisma.job.aggregate({
-    _sum: { totalPrice: true }
-  });
-
-  const clientRemaining = await prisma.transaction.aggregate({
-    where: { type: "incoming" },
-    _sum: { amount: true }
-  });
-
-  const supplierCost = await prisma.transaction.aggregate({
-    where: { type: "outgoing" },
-    _sum: { amount: true }
-  });
 
   return {
+   
+    totalSales: {
+      USD: Number(data.total_sales_usd || 0),
+      EGP: Number(data.total_sales_egp || 0)
+    },
+    clientDebt: Number(data.client_payments || 0),
+    supplierDebt: Number(data.supplier_cost || 0),
+    agentCost: Number(data.agent_cost || 0),
+
+   
     stats: {
-      totalSales: totalSales._sum.totalPrice || 0,
-      clientRemaining: clientRemaining._sum.amount || 0,
-      supplierCost: supplierCost._sum.amount || 0,
-      containers: containers.length,
-      products: products.length,
-      transactions: transactions.length
+      totalJobs: jobs.length,
+      activeContainers: containers.filter(c => c.status !== "cleared").length,
+      totalProducts: products.length,
+      totalTransactions: transactions.length
     },
 
-    recentJobs: jobs.slice(0, 5),
-    activeContainers: containers.filter(c => c.status !== "cleared")
+   
+    recentJobs: jobs,
+    activeShipments: containers.filter(c => c.status !== "cleared").slice(0, 6)
   };
 };

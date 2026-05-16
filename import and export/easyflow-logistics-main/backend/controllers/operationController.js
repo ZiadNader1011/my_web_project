@@ -20,9 +20,10 @@ export const createOperation = async (req, res) => {
     try {
         const data = req.body;
         
-        
+        // 1. معالجة الـ Job ID
         const finalJobId = (data.jobId === 'none' || !data.jobId || data.jobId === "") ? null : parseInt(data.jobId);
 
+        // 2. معالجة المرفقات الجديدة
         const newAttachments = (req.files || []).map(file => ({
             id: Math.random().toString(36).substr(2, 9),
             url: getFileUrl(req, file.filename),
@@ -30,6 +31,7 @@ export const createOperation = async (req, res) => {
             createdAt: new Date().toISOString()
         }));
 
+        // 3. الحفظ في الداتابيز
         const newOp = await prisma.shipmentOperation.create({
             data: {
                 operationDate: new Date(data.operationDate),
@@ -42,14 +44,14 @@ export const createOperation = async (req, res) => {
                 responsiblePerson: data.responsiblePerson || null,
                 qualityRepresentative: data.qualityRepresentative || null,
                 notes: data.notes || null,
-                attachments: newAttachments,
+                attachments: newAttachments, // حفظ المصفوفة مباشرة
                 numberOfContainers: data.numberOfContainers ? data.numberOfContainers.toString() : "0",
             }
         });
         return res.status(201).json(newOp);
     } catch (error) {
         console.error("❌ Create Error:", error);
-        return res.status(400).json({ error: error.message });
+        return res.status(400).json({ error: "Failed to create operation: " + error.message });
     }
 };
 
@@ -64,16 +66,22 @@ export const updateOperation = async (req, res) => {
 
         if (!existingOp) return res.status(404).json({ error: "Operation not found" });
 
-        
-        let updatedAttachments = [];
-        if (data.attachments) {
-            updatedAttachments = typeof data.attachments === 'string' 
-                ? JSON.parse(data.attachments) 
-                : data.attachments;
-        } else {
-            updatedAttachments = existingOp.attachments || [];
+        // 1. معالجة المرفقات الموجودة (تحويلها من String إلى Array لو لزم الأمر)
+        let currentAttachments = [];
+        try {
+            if (data.existingAttachments) {
+                currentAttachments = JSON.parse(data.existingAttachments);
+            } else if (data.attachments && typeof data.attachments === 'string') {
+                // دعم للحالتين (الاسم القديم والجديد)
+                currentAttachments = JSON.parse(data.attachments);
+            } else {
+                currentAttachments = existingOp.attachments || [];
+            }
+        } catch (e) {
+            currentAttachments = existingOp.attachments || [];
         }
 
+        // 2. إضافة الملفات الجديدة المرفوعة حالياً
         if (req.files && req.files.length > 0) {
             const newFiles = req.files.map(file => ({
                 id: Math.random().toString(36).substr(2, 9),
@@ -81,35 +89,33 @@ export const updateOperation = async (req, res) => {
                 description: file.originalname,
                 createdAt: new Date().toISOString()
             }));
-            updatedAttachments = [...updatedAttachments, ...newFiles];
+            currentAttachments = [...currentAttachments, ...newFiles];
         }
 
-        
         const finalJobId = (data.jobId === 'none' || !data.jobId || data.jobId === "") ? null : parseInt(data.jobId);
 
-    
-const updated = await prisma.shipmentOperation.update({
-    where: { id: parseInt(id) },
-    data: {
-        operationDate: data.operationDate ? new Date(data.operationDate) : undefined,
-        loadingDate: (data.loadingDate && data.loadingDate !== "") ? new Date(data.loadingDate) : null,
-        clientName: data.clientName !== undefined ? data.clientName : undefined,
-        jobId: finalJobId, 
-        product: data.product !== undefined ? data.product : undefined,
-        quantity: data.quantity !== undefined ? data.quantity : undefined,
-        containerNumber: data.containerNumber !== undefined ? data.containerNumber : undefined,
-        responsiblePerson: data.responsiblePerson !== undefined ? data.responsiblePerson : undefined,
-        qualityRepresentative: data.qualityRepresentative !== undefined ? data.qualityRepresentative : undefined,
-        notes: data.notes !== undefined ? data.notes : undefined,
-        numberOfContainers: data.numberOfContainers !== undefined ? data.numberOfContainers.toString() : undefined,
-        attachments: updatedAttachments, 
-    },
-});
+        const updated = await prisma.shipmentOperation.update({
+            where: { id: parseInt(id) },
+            data: {
+                operationDate: data.operationDate ? new Date(data.operationDate) : undefined,
+                loadingDate: (data.loadingDate && data.loadingDate !== "") ? new Date(data.loadingDate) : null,
+                clientName: data.clientName ?? undefined,
+                jobId: finalJobId, 
+                product: data.product ?? undefined,
+                quantity: data.quantity ?? undefined,
+                containerNumber: data.containerNumber ?? undefined,
+                responsiblePerson: data.responsiblePerson ?? undefined,
+                qualityRepresentative: data.qualityRepresentative ?? undefined,
+                notes: data.notes ?? undefined,
+                numberOfContainers: data.numberOfContainers ? data.numberOfContainers.toString() : undefined,
+                attachments: currentAttachments, 
+            },
+        });
 
-        res.json(updated);
+        return res.json(updated);
     } catch (error) {
         console.error("❌ Update Error:", error);
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: "Failed to update: " + error.message });
     }
 };
 
@@ -120,13 +126,14 @@ export const deleteOperation = async (req, res) => {
         
         if (!record) return res.status(404).json({ error: "Record not found" });
 
+        // مسح الملفات الفيزيائية من السيرفر
         if (record.attachments && Array.isArray(record.attachments)) {
             for (const file of record.attachments) {
                 try {
                     const filename = file.url.split('/').pop();
                     const filePath = path.join(process.cwd(), 'uploads/operations', filename);
                     await fs.unlink(filePath);
-                } catch (err) { console.log("File cleanup failed or file not found"); }
+                } catch (err) { /* تجاهل لو الملف غير موجود أصلاً */ }
             }
         }
 

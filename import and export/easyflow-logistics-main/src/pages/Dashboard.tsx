@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { StatCard } from '@/components/StatCard';
-import { Briefcase, Ship, Users, DollarSign, Archive, Wheat, Calendar, MapPin, Info, Loader2 } from 'lucide-react';
+import { Briefcase, Ship, Users, DollarSign, Wheat, Calendar, MapPin, Info, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { enUS, ar } from 'date-fns/locale';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -31,7 +31,7 @@ export default function Dashboard() {
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: async () => {
-      const res = await axios.get('http://localhost:5000/api/dashboard/summary');
+      const res = await axios.get('http://localhost:5000/api/dashboard');
       return res.data;
     },
     refetchInterval: 1000 * 60, // تحديث كل دقيقة تلقائياً
@@ -53,10 +53,21 @@ export default function Dashboard() {
     );
   }
 
-  // استخراج البيانات القادمة من الباك إند
-  const stats = dashboard || {};
+const dashboardData = dashboard || {
+  totalSales: { USD: 0, EGP: 0 },
+  clientDebt: 0,
+  supplierDebt: 0,
+  agentCost: 0,
+  stats: {
+    activeContainers: 0,
+    totalProducts: 0,
+    totalTransactions: 0,
+    totalJobs: 0
+  }
+};
   const recentJobs = dashboard?.recentJobs || [];
   const activeShipments = dashboard?.activeShipments || [];
+  console.log(dashboard);
 
   return (
     <div>
@@ -75,7 +86,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-4 mb-8">
         <StatCard
           title="Total Sales"
-          value={formatBalanceObj(stats.totalSales || {})}
+          value={formatBalanceObj(dashboardData.totalSales)}
           icon={Briefcase}
           variant="success"
           description="Net Sales"
@@ -83,7 +94,7 @@ export default function Dashboard() {
 
         <StatCard
           title="Client Remaining"
-          value={formatCurrency(stats.clientDebt || 0, 'USD')}
+          value={formatCurrency(dashboardData.clientDebt, 'USD')}
           icon={DollarSign}
           variant="warning"
           description="Outstanding receivables"
@@ -91,7 +102,7 @@ export default function Dashboard() {
 
         <StatCard
           title="Supplier Own"
-          value={formatCurrency(stats.supplierCost || 0, 'USD')}
+          value={formatCurrency(dashboardData.supplierDebt, 'USD')}
           icon={DollarSign}
           variant="warning"
           description="Total payables"
@@ -99,20 +110,19 @@ export default function Dashboard() {
 
         <StatCard
           title="Agent Remaining"
-          value={formatCurrency(stats.agentCost || 0, 'USD')}
+          value={formatCurrency(dashboardData.agentCost, 'USD')}
           icon={Ship}
           variant="info"
           description="Total agent expenses"
         />
       </div>
 
-      {/* العدادات الرقمية - القادمة من الـ SQL Counts */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 mb-8">
-        <StatCard title={t('common.containers')} value={stats.stats?.activeContainers || 0} icon={Ship} variant="info" />
-        <StatCard title={t('dashboard.cropsProducts')} value={stats.stats?.totalProducts || 0} icon={Wheat} variant="default" />
-        <StatCard title={t('dashboard.payments')} value={stats.stats?.totalTransactions || 0} icon={DollarSign} variant="success" />
-        <StatCard title={t('dashboard.documents')} value={0} icon={Archive} variant="warning" />
-      </div>
+  <StatCard title={t('common.containers')} value={dashboardData.stats?.activeContainers || 0} icon={Ship} variant="info" />
+  <StatCard title={t('dashboard.cropsProducts')} value={dashboardData.stats?.totalProducts || 0} icon={Wheat} variant="default" />
+  <StatCard title={t('dashboard.payments')} value={dashboardData.stats?.totalTransactions || 0} icon={DollarSign} variant="success" />
+  <StatCard title="Total Jobs" value={dashboardData.stats?.totalJobs || 0} icon={Briefcase} variant="warning" />
+</div>
 
       {/* أحدث العمليات - جاهزة من السيرفر */}
       <div className="flex items-center gap-2 mb-3">

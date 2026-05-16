@@ -3,7 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Moon, Sun, Languages, Home, Lock, LogOut, Menu, X } from "lucide-react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useTheme } from "@/theme/ThemeProvider";
-import { useStore } from "@/store/tasks";
+import { useStore } from "@/store/store";
 import { useAuth } from "@/auth/AuthProvider";
 import { Logo } from "./Logo";
 import { cn } from "@/lib/utils";

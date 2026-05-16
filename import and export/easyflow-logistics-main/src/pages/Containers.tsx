@@ -1,15 +1,11 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import {
-  Container,
-  ContainerProduct,
-  formatDate,
-  generateId
+  getContainers, saveContainers, getProducts, generateId,
+  Container, ContainerProduct, formatDate
 } from '@/data/store';
-import axios from 'axios';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2, Ship, MapPin, Package, Calendar, Anchor, Camera, FileText } from 'lucide-react';
 import { toast } from 'sonner';
+import { compressImage } from '@/utils/imageCompression';
 import { FileViewer } from '@/components/FileViewer';
 
 const statusColors: Record<string, string> = {
@@ -37,31 +34,8 @@ const statusIcons: Record<string, string> = {
 
 export default function Containers() {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
-
-
-
-const formatDateForInput = (dateStr: any) => {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
-};
-
-const { data: containers = [], isLoading } = useQuery({
-  queryKey: ['containers'],
-  queryFn: async () => {
-    const res = await axios.get('http://localhost:5000/api/containers');
-    return res.data;
-  }
-});
-const { data: products = [], isLoading: productsLoading } = useQuery({
-  queryKey: ['products'],
-  queryFn: async () => {
-    const res = await axios.get('http://localhost:5000/api/products');
-    console.log("PRODUCTS API => ", res.data);
-    return Array.isArray(res.data) ? res.data : [];
-  }
-});
+  const [containers, setContainers] = useState<Container[]>(getContainers);
+  const products = useMemo(() => getProducts(), []);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<Container | null>(null);
@@ -84,49 +58,20 @@ const { data: products = [], isLoading: productsLoading } = useQuery({
   };
 
   const openEdit = (c: Container) => {
-    console.log("EDIT CONTAINER => ", c);
     setEditing(c);
     setForm({
       containerNumber: c.containerNumber, sourcePort: c.sourcePort,
-      destinationPort: c.destinationPort, shippingDate: formatDateForInput(c.shippingDate),
-      arrivalDate: formatDateForInput(c.arrivalDate),status: c.status,
-products: c.products
-  ? c.products.map((p: any) => ({
-      productId: String(
-        p.productId ||
-        p.product?.id ||
-        ''
-      ),
-      quantity: Number(p.quantity) || 0,
-      packages: Number(p.packages) || 0,
-      netWeight: Number(p.netWeight) || 0,
-      grossWeight: Number(p.grossWeight) || 0,
-      packageType: p.packageType || '',
-      unit: p.unit || 'KG'
-    }))
-  : [],
-    attachments: c.attachments ? [...c.attachments] : [],
-  });
-  setEditOpen(true);
-};
+      destinationPort: c.destinationPort, shippingDate: c.shippingDate,
+      arrivalDate: c.arrivalDate, status: c.status,
+      products: c.products ? [...c.products] : [],
+      attachments: c.attachments ? [...c.attachments] : [],
+    });
+    setEditOpen(true);
+  };
 
   const addProduct = () => {
-  setForm(f => ({
-    ...f,
-    products: [
-      ...f.products,
-      {
-        productId: '', 
-        quantity: 0,
-        packages: 0,
-        netWeight: 0,
-        grossWeight: 0,
-        packageType: '',
-        unit: 'KG'
-      }
-    ]
-  }));
-};
+    setForm(f => ({ ...f, products: [...f.products, { productId: '', quantity: 0, packages: 0 }] }));
+  };
 
   const updateProduct = (i: number, field: string, value: string | number) => {
     setForm(f => {
@@ -140,31 +85,34 @@ products: c.products
     setForm(f => ({ ...f, products: f.products.filter((_, idx) => idx !== i) }));
   };
 
- const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-    const file = e.target.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File too large. Maximum size is 5MB.');
+        return;
+      }
 
-    try {
-      const res = await axios.post('http://localhost:5000/api/containers/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const isImage = file.type.startsWith('image/');
+      let url = '';
+
+      if (isImage) {
+        url = await compressImage(file);
+      } else {
+        url = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => resolve(ev.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+      }
+
       setForm(f => ({
         ...f,
-        attachments: [...(f.attachments || []), { 
-          id: generateId(), 
-          url: res.data.url, 
-          description: file.name, 
-          createdAt: new Date().toISOString() 
-        }]
+        attachments: [...(f.attachments || []), { id: generateId(), url, description: '', createdAt: new Date().toISOString() }]
       }));
-      toast.success('File uploaded successfully');
-    } catch (err) {
-      toast.error('Upload failed');
     }
-  }
-};
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const removeAttachment = (index: number) => {
     setForm(f => ({
@@ -173,80 +121,38 @@ products: c.products
     }));
   };
 
-const handleSave = async () => {
-  if (!form.containerNumber.trim()) {
-    toast.error('Please enter a container number.');
-    return;
-  }
+  const handleSave = () => {
+    if (!form.containerNumber.trim()) { toast.error('Please enter a container number.'); return; }
+    const parsedProducts = (form.products || []).map(p => ({
+      ...p,
+      quantity: Number(p.quantity) || 0,
+      packages: p.packages,
+      netWeight: Number(p.netWeight) || 0,
+      grossWeight: Number(p.grossWeight) || 0
+    }));
+    const formDataToSave = { ...form, products: parsedProducts };
 
-  try {
-    const payload = {
-      ...form,
-      // تحويل التواريخ في مستوى الحاوية وليس داخل المنتجات ✅
-      shippingDate: form.shippingDate ? new Date(form.shippingDate).toISOString() : null,
-      arrivalDate: form.arrivalDate ? new Date(form.arrivalDate).toISOString() : null,
-      
-      products: (form.products || []).map(p => ({
-        productId: parseInt(String(p.productId)), 
-        quantity: parseFloat(String(p.quantity)) || 0,
-        packages: parseInt(String(p.packages)) || 0,
-        netWeight: parseFloat(String(p.netWeight)) || 0,
-        grossWeight: parseFloat(String(p.grossWeight)) || 0,
-        packageType: p.packageType || "",
-      })),
-      attachments: (form.attachments || []).map(a => ({
-        url: a.url,
-        description: a.description || 'Document'
-      }))
-    };
-
+    let updated: Container[];
     if (editing) {
-      await axios.put(`http://localhost:5000/api/containers/${editing.id}`, payload);
-      toast.success('Container updated!');
+      updated = containers.map(c => c.id === editing.id ? { ...c, ...formDataToSave } : c);
+      toast.success(`Container "${form.containerNumber}" updated! ✨`);
     } else {
-      await axios.post('http://localhost:5000/api/containers', payload);
-      toast.success('Container added!');
+      updated = [...containers, { id: generateId(), ...formDataToSave }];
+      toast.success(`Container "${form.containerNumber}" added! 🎉`);
     }
-
-    queryClient.invalidateQueries({ queryKey: ['containers'] });
+    setContainers(updated);
+    saveContainers(updated);
     setEditOpen(false);
-  } catch (error: any) {
-    console.error("Error detail:", error.response?.data);
-    toast.error(error.response?.data?.error || 'Failed to save container');
-  }
-};
+  };
 
-const handleDelete = useCallback(async () => {
-  if (!deleting) return;
-
-  try {
-    await axios.delete(
-      `http://localhost:5000/api/containers/${deleting.id}`
-    );
-
-    queryClient.invalidateQueries({
-      queryKey: ['containers']
-    });
-
-    toast.success('Container deleted');
-
+  const handleDelete = useCallback(() => {
+    if (!deleting) return;
+    const updated = containers.filter(c => c.id !== deleting.id);
+    setContainers(updated);
+    saveContainers(updated);
+    toast.success(`Container "${deleting.containerNumber}" removed.`);
     setDeleting(null);
-    setDeleteOpen(false);
-
-  } catch (error) {
-    console.error(error);
-    toast.error('Delete failed');
-  }
-}, [deleting, queryClient]);
-
-
-  if (isLoading) {
-  return (
-    <div className="flex h-96 items-center justify-center">
-      Loading...
-    </div>
-  );
-}
+  }, [deleting, containers]);
 
   return (
     <div className="notranslate" translate="no">
@@ -264,7 +170,7 @@ const handleDelete = useCallback(async () => {
                 <div>
                   <h3 className="font-semibold text-foreground">{c.containerNumber}</h3>
                   <Badge variant="outline" className={`mt-1 ${statusColors[c.status]}`}>
-                    {statusIcons[c.status]}{t(`status.${c.status}`, { defaultValue: c.status })}
+                    {statusIcons[c.status]}{t(`status.${c.status}`, c.status)}
                   </Badge>
                 </div>
               </div>
@@ -390,33 +296,10 @@ const handleDelete = useCallback(async () => {
                       <span className="text-xs font-medium text-muted-foreground">{t('Product #', 'Product #')}{i + 1}</span>
                       <button onClick={() => removeProduct(i)} className="text-destructive hover:bg-destructive/10 rounded p-1"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
-                   <Select
-  value={cp.productId ? String(cp.productId) : undefined}
-  onValueChange={(value) => {
-    updateProduct(i, 'productId', value);
-  }}
->
-  <SelectTrigger>
-    <SelectValue placeholder="Select Product" />
-  </SelectTrigger>
-
-  <SelectContent>
-    {productsLoading ? (
-      <div className="p-2 text-sm">Loading...</div>
-    ) : products.length === 0 ? (
-      <div className="p-2 text-sm">No products found</div>
-    ) : (
-      products.map((p: any) => (
-        <SelectItem
-          key={p.id}
-          value={String(p.id)}
-        >
-          {p.name}
-        </SelectItem>
-      ))
-    )}
-  </SelectContent>
-</Select>
+                    <Select value={cp.productId} onValueChange={v => updateProduct(i, 'productId', v)}>
+                      <SelectTrigger><SelectValue placeholder={t('Select product', 'Select product')} /></SelectTrigger>
+                      <SelectContent>{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                    </Select>
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <div><Label className="text-xs">{t('Quantity', 'Quantity')}</Label><Input type="number" step="any" value={cp.quantity === 0 ? '' : cp.quantity} onChange={e => updateProduct(i, 'quantity', e.target.value)} /></div>
                       <div>
@@ -488,5 +371,3 @@ const handleDelete = useCallback(async () => {
     </div>
   );
 }
-
-

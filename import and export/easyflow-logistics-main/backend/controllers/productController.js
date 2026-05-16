@@ -32,26 +32,22 @@ export const createProduct = async (req, res) => {
   try {
     const { name, category, supplierIds, numberOfSuppliers } = req.body;
 
-    // تأكدي من تحويل البيانات لقيم سليمة قبل إرسالها لـ Prisma
     const formattedSupplierIds = Array.isArray(supplierIds) 
-      ? supplierIds.map(id => parseInt(id)) 
-      : (supplierIds ? [parseInt(supplierIds)] : []);
+      ? supplierIds.map(id => parseInt(id)).filter(id => !isNaN(id))
+      : (supplierIds && !isNaN(parseInt(supplierIds)) ? [parseInt(supplierIds)] : []);
 
     const newProduct = await prisma.product.create({
       data: {
         name,
         category,
         numberOfSuppliers: parseInt(numberOfSuppliers) || 0,
-        // اختيار أول مورد كـ ID أساسي (إذا كان موديل الـ DB يتطلب ذلك)
         supplierId: formattedSupplierIds.length > 0 ? formattedSupplierIds[0] : null,
-        // تخزين كل الـ IDs في المصفوفة
         supplierIds: formattedSupplierIds
       }
     });
 
-    res.status(201).json(newProduct);
+    res.status(201).json({ ...newProduct, id: String(newProduct.id) });
   } catch (error) {
-    console.error("PRISMA ERROR DETAILS:", error); 
     res.status(400).json({ error: "Failed to save product: " + error.message });
   }
 };

@@ -1,5 +1,5 @@
 import { useI18n } from "@/i18n/I18nProvider";
-import type { Priority, TaskStatus } from "@/store/tasks";
+import type { Priority, TaskStatus } from "@/store/store";
 import { cn } from "@/lib/utils";
 
 export function PriorityBadge({ priority }: { priority: Priority }) {

@@ -9,27 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2, Users, Phone, Briefcase, DollarSign, Printer } from 'lucide-react';
 import { toast } from 'sonner';
-import axios from 'axios';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
 
 export default function Employees() {
-  const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const { data: employees = [], isLoading: loadingEmps } = useQuery({
-    queryKey: ['employees'],
-    queryFn: async () => {
-      const res = await axios.get('http://localhost:5000/api/employees');
-      return res.data;
-    }
-  });
-  const { data: transactions = [], isLoading: loadingTrans } = useQuery({
-    queryKey: ['transactions'],
-    queryFn: async () => {
-      const res = await axios.get('http://localhost:5000/api/transactions');
-      return res.data;
-    }
-  });
+  const [employees, setEmployees] = useState<Employee[]>(getEmployees);
+  const transactions = useMemo(() => getTransactions(), []);
+
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
@@ -48,70 +33,38 @@ export default function Employees() {
     setEditOpen(true);
   };
 
-const handleSave = async () => {
-  if (!form.name) {
-    toast.error('Name is required');
-    return;
-  }
-
-  try {
+  const handleSave = () => {
+    if (!form.name) {
+      toast.error('Name is required');
+      return;
+    }
+    const empData: Employee = {
+      ...form,
+      id: editing ? editing.id : generateId(),
+    };
+    
+    let updated;
     if (editing) {
-      await axios.put(`http://localhost:5000/api/employees/${editing.id}`, form);
+      updated = employees.map(e => e.id === editing.id ? empData : e);
       toast.success('Employee updated successfully');
     } else {
-      await axios.post('http://localhost:5000/api/employees', form);
+      updated = [...employees, empData];
       toast.success('Employee added successfully');
     }
-    queryClient.invalidateQueries({ queryKey: ['employees'] });
+    
+    setEmployees(updated);
+    saveEmployees(updated);
     setEditOpen(false);
-  } catch (error) {
-    console.error(error);
-    toast.error('Failed to save employee');
-  }
-};
+  };
 
-const handleDelete = async () => {
-  if (!deleting) return;
-  
-  // حفظ الاسم عشان نطلعه في الـ Toast قبل ما يتصفر الـ State
-  const empName = deleting.name;
-
-  try {
-    // 1. تنفيذ المسح
-    const response = await axios.delete(`http://localhost:5000/api/employees/${deleting.id}`);
-    
-    // 2. التحقق من النجاح (لو الباك إند بيرجع داتا أو كود نجاح)
-    if (response.status === 200 || response.status === 204) {
-      toast.success(`${empName} removed successfully`);
-    }
-
-    // 3. تحديث البيانات فوراً
-    queryClient.invalidateQueries({ queryKey: ['employees'] });
-    
-    // 4. إغلاق المودال وتصفير الـ State
-    setDeleteOpen(false);
+  const handleDelete = () => {
+    if (!deleting) return;
+    const updated = employees.filter(e => e.id !== deleting.id);
+    setEmployees(updated);
+    saveEmployees(updated);
+    toast.success('Employee removed');
     setDeleting(null);
-    
-  } catch (error: any) {
-    console.error("❌ Delete Error:", error);
-    
-    // حماية إضافية: لو السيرفر رجع 404 (يعني اتمسح فعلاً أو مش موجود) اعتبريها نجاح
-    if (error.response?.status === 404) {
-       toast.success(`${empName} was already removed`);
-       queryClient.invalidateQueries({ queryKey: ['employees'] });
-       setDeleteOpen(false);
-       setDeleting(null);
-       return;
-    }
-
-    toast.error('Could not complete delete operation');
-  }
-};
-if (loadingEmps || loadingTrans) return (
-  <div className="flex h-96 items-center justify-center">
-    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-  </div>
-);
+  };
 
   return (
     <div className="pb-10">

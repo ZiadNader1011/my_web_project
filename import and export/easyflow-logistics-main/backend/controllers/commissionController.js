@@ -2,28 +2,23 @@ import fs from 'fs';
 import path from 'path';
 import { prisma } from '../lib/prisma.js';
 
-const uploadDir = path.join(__dirname, '../uploads/commissions');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-
 export const getCommissions = async (req, res) => {
     try {
-        const commissions = await prisma.commission.findMany({
-            orderBy: { date: 'desc' }
-        });
-        res.json(commissions);
+        const commissions = await prisma.commission.findMany({ orderBy: { date: 'desc' } });
+        const formatted = commissions.map(c => ({
+            ...c,
+            id: String(c.id),
+            attachments: typeof c.attachments === 'string' ? JSON.parse(c.attachments) : (c.attachments || [])
+        }));
+        res.json(formatted);
     } catch (error) {
         res.status(500).json({ error: "Failed to fetch commissions" });
     }
 };
 
-
 export const createCommission = async (req, res) => {
     try {
         const data = req.body;
-        
         let attachments = [];
         if (req.files && req.files.length > 0) {
             attachments = req.files.map(file => ({
@@ -48,31 +43,26 @@ export const createCommission = async (req, res) => {
                 attachments: attachments 
             }
         });
-        res.status(201).json(newCommission);
+        res.status(201).json({ ...newCommission, id: String(newCommission.id) });
     } catch (error) {
-        console.error("❌ CREATE ERROR:", error);
         res.status(500).json({ error: error.message });
     }
 };
-
 
 export const updateCommission = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
+        const numericId = parseInt(id);
 
-        const existing = await prisma.commission.findUnique({ where: { id: parseInt(id) } });
+        const existing = await prisma.commission.findUnique({ where: { id: isNaN(numericId) ? 0 : numericId } });
         if (!existing) return res.status(404).json({ error: "Not found" });
 
-        
         let keptAttachments = [];
         if (data.attachments) {
-            keptAttachments = typeof data.attachments === 'string' 
-                ? JSON.parse(data.attachments) 
-                : data.attachments;
+            keptAttachments = typeof data.attachments === 'string' ? JSON.parse(data.attachments) : data.attachments;
         }
 
-       
         let newFiles = [];
         if (req.files && req.files.length > 0) {
             newFiles = req.files.map(file => ({
@@ -86,7 +76,7 @@ export const updateCommission = async (req, res) => {
         const finalAttachments = [...keptAttachments, ...newFiles];
 
         const updated = await prisma.commission.update({
-            where: { id: parseInt(id) },
+            where: { id: numericId },
             data: {
                 date: data.date ? new Date(data.date) : existing.date,
                 clientName: data.clientName !== undefined ? data.clientName : existing.clientName,
@@ -100,9 +90,8 @@ export const updateCommission = async (req, res) => {
                 attachments: finalAttachments
             }
         });
-        res.json(updated);
+        res.json({ ...updated, id: String(updated.id) });
     } catch (error) {
-        console.error("❌ UPDATE ERROR:", error);
         res.status(400).json({ error: error.message });
     }
 };
@@ -110,23 +99,7 @@ export const updateCommission = async (req, res) => {
 export const deleteCommission = async (req, res) => {
     try {
         const { id } = req.params;
-        const commission = await prisma.commission.findUnique({ where: { id: parseInt(id) } });
-        
-        if (commission && Array.isArray(commission.attachments)) {
-            commission.attachments.forEach(file => {
-                try {
-                    const fileName = file.url.split('/').pop();
-                    const filePath = path.join(uploadDir, fileName);
-                    if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath);
-                    }
-                } catch (err) {
-                    console.log("File already deleted or path error");
-                }
-            });
-        }
-
-        await prisma.commission.delete({ where: { id: parseInt(id) } });
+        await prisma.commission.deleteMany({ where: { id: parseInt(id) } });
         res.json({ message: "Deleted successfully" });
     } catch (error) {
         res.status(400).json({ error: "Delete failed" });

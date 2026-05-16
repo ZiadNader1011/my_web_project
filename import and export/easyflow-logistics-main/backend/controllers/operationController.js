@@ -9,9 +9,16 @@ export const getOperations = async (req, res) => {
         const operations = await prisma.shipmentOperation.findMany({
             orderBy: { operationDate: 'desc' },
         });
-        return res.status(200).json(operations);
+        
+        // التأكد من أن المرفقات تعود كـ Array حقيقي ومطابقة المعرف النصي
+        const formatted = operations.map(op => ({
+            ...op,
+            id: String(op.id),
+            attachments: typeof op.attachments === 'string' ? JSON.parse(op.attachments) : (op.attachments || [])
+        }));
+        
+        return res.status(200).json(formatted);
     } catch (error) {
-        console.error("❌ Fetch Error:", error);
         return res.status(500).json({ error: "Internal Server Error" });
     }
 };

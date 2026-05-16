@@ -1,13 +1,15 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { StatCard } from '@/components/StatCard';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
-import { z } from 'zod';
 import {
- Job, JobProduct, JobAttachment, OperationType, formatCurrency, formatBalanceObj, formatDate
+  getJobs, saveJobs, getSuppliers, getProducts, getContainers, getClients, getTransactions, saveTransactions,
+  getShippingAgents, getShipmentOperations, getShippingAgentRecords,
+  generateId, Job, JobProduct, JobAttachment, OperationType, formatCurrency, sumByCurrency, formatBalanceObj, formatDate
 } from '@/data/store';
+import { compressImage } from '@/utils/imageCompression';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,9 +26,6 @@ import {
   ChevronDown, ChevronUp, Users, Camera, ArrowRightLeft, ArrowUpRight, ArrowDownRight, FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
-import axios from 'axios';
-import { useQuery } from '@tanstack/react-query';
-import { useQueryClient } from '@tanstack/react-query';
 
 const statusColors: Record<string, string> = {
   active: 'bg-success/10 text-success border-success/20',
@@ -34,63 +33,20 @@ const statusColors: Record<string, string> = {
   cancelled: 'bg-destructive/10 text-destructive border-destructive/20',
 };
 
-export const jobSchema = z.object({
-  title: z.string().min(3),
-  currency: z.string(),
-  products: z.array(
-    z.object({
-      productId: z.number(),
-      quantity: z.number().positive(),
-      unitPrice: z.number().positive(),
-    })
-  ),
-});
-
 export default function Jobs() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
- const { data: jobs = [], isLoading: jobsLoading} = useQuery({
-    queryKey: ['jobs'],
-    queryFn: () => axios.get('http://localhost:5000/api/jobs').then(res => res.data)
-  });
-  const { data: transactions = [] } = useQuery({
-    queryKey: ['transactions'],
-    queryFn: () => axios.get('http://localhost:5000/api/transactions').then(res => res.data)
-  });
-const { data: suppliers = [] } = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: () => axios.get('http://localhost:5000/api/suppliers').then(res => res.data)
-  });
-  const { data: clients = [] } = useQuery({
-    queryKey: ['clients'],
-    queryFn: () => axios.get('http://localhost:5000/api/clients').then(res => res.data)
-  });
- const { data: products = [] } = useQuery({
-    queryKey: ['products'],
-    queryFn: () => axios.get('http://localhost:5000/api/products').then(res => res.data)
-  });
-
-  const { data: containers = [] } = useQuery({
-    queryKey: ['containers'],
-    queryFn: () => axios.get('http://localhost:5000/api/containers').then(res => res.data)
-  });
-  const { data: shippingAgents = [] } = useQuery({
-    queryKey: ['shippingAgents'],
-    queryFn: () => axios.get('http://localhost:5000/api/shipping-agents').then(res => res.data)
-  });
-  const { data: shipmentOperations = [] } = useQuery({
-    queryKey: ['shipmentOperations'],
-    queryFn: () => axios.get('http://localhost:5000/api/shipmentOperations').then(res => res.data)
-  });
-
-  const { data: shippingAgentRecords = [] } = useQuery({
-    queryKey: ['shippingAgentRecords'],
-    queryFn: () => axios.get('http://localhost:5000/api/shippingAgentRecords').then(res => res.data)
-  });
+  const [jobs, setJobs] = useState<Job[]>(getJobs);
+  const transactions = useMemo(() => getTransactions(), []);
+  const suppliers = useMemo(() => getSuppliers(), []);
+  const clients = useMemo(() => getClients(), []);
+  const products = useMemo(() => getProducts(), []);
+  const containers = useMemo(() => getContainers(), []);
+  const shippingAgents = useMemo(() => getShippingAgents(), []);
+  const shipmentOperations = useMemo(() => getShipmentOperations(), []);
+  const shippingAgentRecords = useMemo(() => getShippingAgentRecords(), []);
 
   const [activeTab, setActiveTab] = useState<OperationType>('export');
-
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -117,17 +73,17 @@ const { data: suppliers = [] } = useQuery({
   const activeJobs = filteredJobs.filter(j => j.status === 'active').length;
 
   const totalValueObj = filteredJobs.reduce((acc, job) => {
-    const discount = Number(job.discountPercentage || 0);
+    const hasValidProducts = job.products && job.products.some(p => (Number(p.quantity) || 0) > 0 && (Number(p.unitPrice) || 0) > 0);
+    const discount = job.discountPercentage || 0;
 
-    if (job.products && job.products.length > 0) {
+    if (hasValidProducts) {
       job.products.forEach(p => {
         const c = p.currency || job.currency;
-        const gross = Number(p.quantity || 0) * Number(p.unitPrice || 0);
+        const gross = (Number(p.quantity) || 0) * (Number(p.unitPrice) || 0);
         acc[c] = (acc[c] || 0) + (gross * (1 - discount / 100));
       });
     } else {
-      const total = Number(job.totalPrice || 0);
-      acc[job.currency] = (acc[job.currency] || 0) + (total * (1 - discount / 100));
+      acc[job.currency] = (acc[job.currency] || 0) + (job.totalPrice * (1 - discount / 100));
     }
     return acc;
   }, {} as Record<string, number>);
@@ -140,20 +96,22 @@ const { data: suppliers = [] } = useQuery({
     setEditOpen(true);
   };
 
-  const openEdit = (j: any) => {
-  setEditing(j);
-  setForm({
-    ...j,
-    supplierId: j.supplierId ? String(j.supplierId) : 'none',
-    clientId: j.clientId ? String(j.clientId) : 'none',
-    invoiceNumber: j.jobNumber || '', 
-    attachments: Array.isArray(j.attachments) ? j.attachments : [],
-    containerIds: Array.isArray(j.containerIds)
-  ? j.containerIds.map(String)
-  : [],
-  });
-  setEditOpen(true);
-};
+  const openEdit = (j: Job) => {
+    setEditing(j);
+    setForm({
+      title: j.title || '', supplierId: j.supplierId || 'none', clientId: j.clientId || 'none', containerId: j.containerId || 'none',
+      currency: j.currency, paymentDate: j.paymentDate, status: j.status, operationType: j.operationType,
+      invoiceNumber: j.invoiceNumber || '', blNumber: j.blNumber || '', exportCertificate: j.exportCertificate || '', shippingAgent: j.shippingAgent || '', incoterm: j.incoterm || 'none', departurePort: j.departurePort || '', arrivalPort: j.arrivalPort || '', transitTo: j.transitTo || '', packingListUrl: j.packingListUrl || '',
+      isSold: j.isSold || false, discountPercentage: j.discountPercentage || 0, supplierDiscountPercentage: j.supplierDiscountPercentage || 0, rawMaterialPricePerTon: j.rawMaterialPricePerTon || 0, rawMaterialWeight: j.rawMaterialWeight || 0, rawMaterialCost: j.rawMaterialCost || 0, pettyCash: j.pettyCash || 0, otherCostReason: j.otherCostReason || '',
+      numberOfContainers: j.numberOfContainers || (j.containerIds?.length) || (j.containerId && j.containerId !== 'none' ? 1 : ''),
+      containerIds: j.containerIds || (j.containerId && j.containerId !== 'none' ? [j.containerId] : []),
+      notes: j.notes, products: [...j.products], attachments: [...(j.attachments || [])],
+      numberOfReps: j.numberOfReps || '',
+      repNames: [...(j.repNames || [])],
+      createdAt: (j.createdAt || new Date().toISOString()).split('T')[0]
+    });
+    setEditOpen(true);
+  };
 
   const addProductLine = () => {
     setForm(f => ({ ...f, products: [...f.products, { productId: '', quantity: 0, unitPrice: 0, packages: 0, numberOfPallets: 0, packageType: '', variety: '', caliber: '', grade: '' }] }));
@@ -172,44 +130,23 @@ const { data: suppliers = [] } = useQuery({
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-    const file = e.target.files[0];
-    const formData = new FormData();
-    formData.append('file', file); 
-    try {
-      const res = await axios.post('http://localhost:5000/api/upload', formData);
-      const imageUrl = res.data.url; 
-
+    if (e.target.files && e.target.files[0]) {
+      const base64 = await compressImage(e.target.files[0]);
       setForm(f => ({
         ...f,
-        attachments: [...f.attachments, {
-          id: Date.now().toString(),
-          url: imageUrl,
-          description: file.name,
-          createdAt: new Date().toISOString()
-        }]
+        attachments: [...(f.attachments || []), { id: generateId(), url: base64, description: '', createdAt: new Date().toISOString() }]
       }));
-    } catch (error) {
-      toast.error("Upload failed");
     }
-  }
-};
+    e.target.value = '';
+  };
 
-const handlePackingListUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-    const file = e.target.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const res = await axios.post('http://localhost:5000/api/upload', formData);
-      setForm(f => ({ ...f, packingListUrl: res.data.url }));
-      toast.success('File uploaded and linked');
-    } catch (err) {
-      toast.error('Upload failed');
+  const handlePackingListUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const base64 = await compressImage(e.target.files[0]);
+      setForm(f => ({ ...f, packingListUrl: base64 }));
     }
-  }
-};
+    e.target.value = '';
+  };
 
   const removeAttachment = (index: number) => {
     setForm(f => ({
@@ -220,68 +157,86 @@ const handlePackingListUpload = async (e: React.ChangeEvent<HTMLInputElement>) =
 
   const calcTotal = (prods: { quantity?: string | number; unitPrice?: string | number }[]) => prods.reduce((s, p) => s + (Number(p.quantity) || 0) * (Number(p.unitPrice) || 0), 0);
 
-const handleSave = async () => {
-  const validProducts = form.products
-    .filter(p => p.productId && p.productId !== 'none') 
-    .map(p => ({
-      productId: Number(p.productId),
-      quantity: Number(p.quantity) || 1,
+  const handleSave = () => {
+    if (!form.title.trim()) { toast.error('Please enter a job title.'); return; }
+    // Validations based on type removed for flexibility
+    const parsedProducts = form.products.map(p => ({
+      ...p,
+      quantity: Number(p.quantity) || 0,
       unitPrice: Number(p.unitPrice) || 0,
-      currency: p.currency || form.currency
+      packages: p.packages
     }));
+    const totalPrice = calcTotal(parsedProducts);
+    const calculatedRawMaterialCost = (Number(form.rawMaterialPricePerTon) || 0) * (Number(form.rawMaterialWeight) || 0);
 
-  if (validProducts.length === 0 && activeTab !== 'supply') {
-    toast.error("Please add at least one valid product");
-    return;
-  }
+    // Auto-calculate final net values if this job impacts the statement
+    // Total Revenue = totalPrice - (totalPrice * (form.discountPercentage/100))
+    // Total Cost = rawMaterialCost + pettyCash
 
-  const finalJobData = {
-    ...form,
-   supplierId: (!form.supplierId || form.supplierId === 'none') ? null : Number(form.supplierId),
-    clientId: (!form.clientId || form.clientId === 'none') ? null : Number(form.clientId),
-    products: validProducts,
-    containerIds: form.containerIds.filter(id => id !== 'none').map(Number)
+    const finalJobData: Job = {
+      ...form,
+      products: parsedProducts,
+      rawMaterialPricePerTon: Number(form.rawMaterialPricePerTon) || 0,
+      rawMaterialWeight: Number(form.rawMaterialWeight) || 0,
+      pettyCash: Number(form.pettyCash) || 0,
+      discountPercentage: Number(form.discountPercentage) || 0,
+      supplierDiscountPercentage: Number(form.supplierDiscountPercentage) || 0,
+      rawMaterialCost: calculatedRawMaterialCost,
+      id: editing ? editing.id : generateId(),
+      supplierId: form.supplierId === 'none' ? undefined : form.supplierId,
+      clientId: form.clientId === 'none' ? undefined : form.clientId,
+      containerId: form.containerId === 'none' ? undefined : form.containerId,
+      numberOfContainers: Number(form.numberOfContainers) || 0,
+      containerIds: form.containerIds,
+      totalPrice,
+      numberOfReps: Number(form.numberOfReps) || 0,
+      repNames: form.repNames.slice(0, Number(form.numberOfReps) || 0),
+      createdAt: form.createdAt ? new Date(form.createdAt + 'T12:00:00Z').toISOString() : new Date().toISOString()
+    };
+
+    let updated: Job[];
+    if (editing) {
+      updated = jobs.map(j => j.id === editing.id ? finalJobData : j);
+
+      // Synchronize related transaction dates if the Job's creation date changed
+      const oldDateOnly = editing.createdAt ? new Date(editing.createdAt).toISOString().split('T')[0] : '';
+      const newDateOnly = finalJobData.createdAt.split('T')[0];
+
+      if (oldDateOnly !== newDateOnly) {
+        const allTx = getTransactions();
+        let changedTx = false;
+        const updatedTx = allTx.map(t => {
+          if (t.relatedId === editing.id) {
+            changedTx = true;
+            return { ...t, date: newDateOnly };
+          }
+          return t;
+        });
+        if (changedTx) {
+          saveTransactions(updatedTx);
+        }
+      }
+
+      toast.success(`"${form.title}" has been updated! ✨`);
+    } else {
+      updated = [...jobs, finalJobData];
+      toast.success(`"${form.title}" has been created! 🎉`);
+    }
+    setJobs(updated);
+    saveJobs(updated);
+    setEditOpen(false);
   };
 
-  try {
-    if (editing) {
-      await axios.put(`http://localhost:5000/api/jobs/${editing.id}`, finalJobData);
-    } else {
-      await axios.post('http://localhost:5000/api/jobs', finalJobData);
-    }
-    queryClient.invalidateQueries({ queryKey: ['jobs'] });
-    setEditOpen(false);
-    toast.success("Job saved successfully! 🎉");
-  } catch (error) {
-    console.error("Save Error:", error.response?.data);
-    toast.error(error.response?.data?.error || "Check if Product ID exists in Database");
-  }
-};
-
-  const handleDelete = useCallback(async () => {
-  if (!deleting) return;
-
-  try {
-    await axios.delete(`http://localhost:5000/api/jobs/${deleting.id}`);
-
-    queryClient.invalidateQueries({ queryKey: ['jobs'] });
-    toast.success(`Job removed successfully.`);
+  const handleDelete = useCallback(() => {
+    if (!deleting) return;
+    const updated = jobs.filter(j => j.id !== deleting.id);
+    setJobs(updated);
+    saveJobs(updated);
+    toast.success(`Removed job.`);
     setDeleting(null);
-    setDeleteOpen(false);
-  } catch (error) {
-    console.error("Delete Error:", error);
-    toast.error("Failed to delete from database.");
-  }
-}, [deleting, queryClient]);
+  }, [deleting, jobs]);
 
-
-   if (jobsLoading) {
   return (
-    <div className="p-10 text-center text-muted-foreground">
-      Loading jobs...
-    </div>
-  );
-}return (
     <div>
       <PageHeader title={t('common.jobs', 'Jobs')} description={t('pages.jobsDesc', 'Manage your import, export, and supply jobs centrally.')}
         action={<Button onClick={openNew} size="lg"><Plus className="mr-2 h-4 w-4" /> {t('pages.createJob', 'New Job')}</Button>} />
@@ -317,12 +272,7 @@ const handleSave = async () => {
                 : { [job.currency]: job.totalPrice };
 
               const jobProductsValuationObj = Object.fromEntries(
-                Object.entries(jobProductsValuationObjGross).map(([c, v]) => {
-                  const value = Number(v) || 0;
-                  const discount = Number(job.discountPercentage || 0);
-
-                  return [c, value * (1 - discount / 100)];
-                })
+                Object.entries(jobProductsValuationObjGross).map(([c, v]) => [c, v * (1 - (job.discountPercentage || 0) / 100)])
               );
 
               const formatMultiTotal = (obj: Record<string, number>) => {
@@ -338,9 +288,7 @@ const handleSave = async () => {
                         <div className="flex items-center gap-2 flex-wrap">
                           <Briefcase className="h-4 w-4 text-primary" />
                           <h3 className="font-semibold text-foreground">{job.title}</h3>
-                          <Badge variant="outline" className={job?.status ? (statusColors[job.status] || '') : ''}>
-                            {job?.status ? t(`status.${job.status}` as any, { defaultValue: job.status }) : '...'}
-                          </Badge>
+                          <Badge variant="outline" className={statusColors[job.status]}>{t(`status.${job.status}`, job.status)}</Badge>
                           {job.isSold && <Badge variant="secondary">Sold</Badge>}
                         </div>
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
@@ -443,11 +391,7 @@ const handleSave = async () => {
                               });
 
                               const baseDiscountObj = Object.fromEntries(
-                                Object.entries(grossValuationObj).map(([c, v]) => {
-                                  const val = Number(v) || 0;
-                                  const discount = Number(job.discountPercentage || 0);
-                                  return [c, val * (discount / 100)];
-                                })
+                                Object.entries(grossValuationObj).map(([c, v]) => [c, v * ((job.discountPercentage || 0) / 100)])
                               );
 
                               const totalOtherCostsObj = mergeCurr(baseOtherObj, txPettyCashObj, txOtherCostObj, agentCostObj);
@@ -513,10 +457,6 @@ const handleSave = async () => {
                           <div className="rounded-lg bg-muted/40 p-3 space-y-2">
                             {job.products.map((jp, i) => {
                               const prod = products.find(p => p.id === jp.productId);
-                              const quantity = Number(jp.quantity || 0);
-                              const unitPrice = Number(jp.unitPrice || 0);
-                              const lineTotal = quantity * unitPrice;
-
                               return (
                                 <div key={i} className="flex items-center justify-between text-sm">
                                   <div className="flex items-center gap-2">
@@ -524,10 +464,8 @@ const handleSave = async () => {
                                     <span className="text-foreground">{prod?.name || 'Unknown'}</span>
                                   </div>
                                   <span className="text-muted-foreground">
-                                    {quantity} × {formatCurrency(unitPrice, jp.currency || job.currency)} =
-                                    <span className="font-medium text-foreground">
-                                      {formatCurrency(lineTotal, jp.currency || job.currency)}
-                                    </span>
+                                    {jp.quantity} × {formatCurrency(jp.unitPrice, jp.currency || job.currency)} = <span className="font-medium text-foreground">{formatCurrency(jp.quantity * jp.unitPrice, jp.currency || job.currency)}</span>
+                                    {jp.packages && ` · ${jp.packages} pkgs`}
                                   </span>
                                 </div>
                               );
@@ -657,7 +595,7 @@ const handleSave = async () => {
                   <SelectTrigger><SelectValue placeholder="Select Client" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {clients.map(c => (<SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>))}
+                    {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -668,7 +606,7 @@ const handleSave = async () => {
                   <SelectTrigger><SelectValue placeholder="Select Supplier" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {suppliers.map(s => (<SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>))}
+                    {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -760,7 +698,7 @@ const handleSave = async () => {
                     <SelectTrigger><SelectValue placeholder="Link container" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No container / Skip</SelectItem>
-                     {containers.map(c => (<SelectItem key={c.id} value={String(c.id)}>{c.containerNumber}</SelectItem>))}
+                      {containers.map(c => <SelectItem key={c.id} value={c.id}>{c.containerNumber}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -894,24 +832,10 @@ const handleSave = async () => {
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                     <p className="text-xs font-medium text-muted-foreground">Product #{i + 1}</p>
-                   {/* ابحثي عن الجزء الذي يعرض اختيار المنتج داخل سطر المنتجات وحدثيه هكذا */}
-<Select 
-  value={String(jp.productId)} 
-  onValueChange={(val) => updateProductLine(i, 'productId', val)}
->
-  <SelectTrigger className="w-[200px]">
-    <SelectValue placeholder="Select Product" />
-  </SelectTrigger>
-  <SelectContent>
-    {}
-    {products && products.length > 0 ? (
-      products.map((p: any) => (
-        <SelectItem key={p.id} value={String(p.id)}>
-          {p.name}
-        </SelectItem>
-      ))
-    ) : (<SelectItem value="none" disabled>No products found</SelectItem>
-                                                                         )}</SelectContent></Select>
+                    <Select value={jp.productId} onValueChange={v => updateProductLine(i, 'productId', v)}>
+                      <SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger>
+                      <SelectContent>{products.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                    </Select>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
                       <div>
                         <Label className="text-sm">Quantity</Label>
@@ -1058,12 +982,7 @@ const handleSave = async () => {
 
       <FileViewer fileUrl={previewImage} onClose={() => setPreviewImage(null)} />
 
-      <DeleteConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onConfirm={handleDelete}
-        itemName={String(deleting?.title || deleting?.id || '')}
-      />
+      <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={handleDelete} itemName={deleting?.title || ''} />
     </div>
   );
 }

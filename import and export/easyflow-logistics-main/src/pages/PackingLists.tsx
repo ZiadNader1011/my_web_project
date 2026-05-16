@@ -2,7 +2,8 @@ import { useState, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
-import { generateId, StandalonePackingList, PackingListProduct, formatDate, getContainers } from '@/data/store';
+import { getPackingLists, savePackingLists, generateId, StandalonePackingList, PackingListProduct, formatDate, getContainers } from '@/data/store';
+import { compressImage } from '@/utils/imageCompression';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,21 +14,10 @@ import { FileViewer } from '@/components/FileViewer';
 import { PackingListPrintForm } from '@/components/PackingListPrintForm';
 import { Plus, Pencil, Trash2, FileText, Calendar, Camera, PackageSearch, FileBox, Printer } from 'lucide-react';
 import { toast } from 'sonner';
-import axios from 'axios';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
 
 export default function PackingLists() {
-  const queryClient = useQueryClient();
   const { t } = useTranslation();
-  const { data: packingLists = [], isLoading } = useQuery({
-    queryKey: ['packingLists'],
-    queryFn: async () => {
-      const res = await axios.get('http://localhost:5000/api/packing-lists');
-      return res.data;
-    }
-  });
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [packingLists, setPackingLists] = useState<StandalonePackingList[]>(getPackingLists);
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -78,14 +68,8 @@ export default function PackingLists() {
 
   const openEdit = (pl: StandalonePackingList) => {
     setEditing(pl);
-    const formatDateForInput = (dateString: string | null | undefined) => {
-    if (!dateString) return '';
-    const d = new Date(dateString);
-    return d.toISOString().split('T')[0];
-  };
     setForm({ 
-      date: formatDateForInput(pl.date), 
-      shippingDate: formatDateForInput(pl.shippingDate),
+      date: pl.date, 
       blNumber: pl.blNumber, 
       containerNumber: pl.containerNumber, 
       clientName: pl.clientName, 
@@ -105,6 +89,7 @@ export default function PackingLists() {
       pol: pl.pol || '',
       pod: pl.pod || '',
       finalDestination: pl.finalDestination || '',
+      shippingDate: pl.shippingDate || '',
       numberOfContainers: pl.numberOfContainers || '',
       containerNumbers: [...(pl.containerNumbers || [])],
       numberOfProducts: pl.numberOfProducts || '',
@@ -114,25 +99,35 @@ export default function PackingLists() {
     setEditOpen(true);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-    const file = e.target.files[0];
-    setSelectedFiles(prev => [...prev, file]); 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File too large. Maximum size is 5MB.');
+        return;
+      }
+      
+      const isImage = file.type.startsWith('image/');
+      let url = '';
+      
+      if (isImage) {
+        url = await compressImage(file);
+      } else {
+        // Fallback for PDF, Excel, etc (note: base64 can be large)
+        url = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => resolve(ev.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+      }
 
-    setForm(f => ({
-      ...f,
-      attachments: [
-        ...f.attachments, 
-        { 
-          id: Math.random().toString(), 
-          url: URL.createObjectURL(file), 
-          description: file.name,
-          createdAt: new Date().toISOString() 
-        }
-      ]
-    }));
-  }
-};
+      setForm(f => ({
+        ...f,
+        attachments: [...f.attachments, { id: generateId(), url, description: '', createdAt: new Date().toISOString() }]
+      }));
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const removeAttachment = (index: number) => {
     setForm(f => ({
@@ -141,94 +136,41 @@ export default function PackingLists() {
     }));
   };
 
-  const handleSave = async () => {
-  const formData = new FormData();
-
-  // إضافة الحقول الأساسية
-  formData.append('date', form.date);
-  formData.append('clientName', form.clientName);
-  formData.append('blNumber', form.blNumber);
-  formData.append('invoiceNumber', form.invoiceNumber);
-  formData.append('customRelease', form.customRelease);
-  formData.append('note', form.note);
-  formData.append('shippingAgent', form.shippingAgent);
-  formData.append('pol', form.pol);
-  formData.append('pod', form.pod);
-  formData.append('finalDestination', form.finalDestination);
-  formData.append('shippingDate', form.shippingDate || '');
-  formData.append('dhlNumber', form.dhlNumber);
-
-  // إرسال المصفوفات كـ JSON (لأن PostgreSQL/Prisma تتعامل معها كـ Json)
-  formData.append('containerNumbers', JSON.stringify(form.containerNumbers.filter(Boolean)));
-  formData.append('products', JSON.stringify(form.products));
-  formData.append('numberOfContainers', String(form.numberOfContainers || 0));
-  formData.append('numberOfProducts', String(form.numberOfProducts || 0));
-
-  // معالجة المرفقات (القديم يبقى والجديد يُرفع)
-  const existingAttachments = form.attachments.filter(att => !att.url.startsWith('blob:'));
-  formData.append('existingAttachments', JSON.stringify(existingAttachments));
-
-  selectedFiles.forEach(file => {
-    formData.append('attachments', file); // حقل الملفات لـ Multer
-  });
-
-  try {
-    if (editing) {
-      await axios.put(`http://localhost:5000/api/packing-lists/${editing.id}`, formData);
-      toast.success('Updated successfully');
-    } else {
-      await axios.post('http://localhost:5000/api/packing-lists', formData);
-      toast.success('Created successfully');
-    }
-
-    queryClient.invalidateQueries({ queryKey: ['packingLists'] });
-    setEditOpen(false);
-    setSelectedFiles([]);
-  } catch (error) {
-    toast.error('Failed to save to database');
-  }
-};
-
-const handleDelete = async () => {
-  if (!deleting) return;
-  
-  // 1. خدي نسخة من الاسم عشان الرسالة
-  const itemName = deleting.clientName || deleting.clientName || 'Record';
-
-  try {
-    // 2. ابعتي الطلب واستني الرد
-    const response = await axios.delete(`http://localhost:5000/api/packing-lists/${deleting.id}`);
-
-    // 3. تأكدي إن الكود ناجح (200 أو 204)
-    if (response.status === 200 || response.status === 204) {
-      toast.success(`"${itemName}" اتمسح بنجاح`);
-    }
-
-    // 4. الترتيب هنا مهم جداً: اقفلي المودال الأول وبعدين حدثي البيانات
-    setDeleteOpen(false);
-    setDeleting(null);
+  const handleSave = () => {
+    const plData: StandalonePackingList = {
+      ...form,
+      numberOfContainers: Number(form.numberOfContainers) || 0,
+      containerNumbers: form.containerNumbers.slice(0, Number(form.numberOfContainers) || 0),
+      numberOfProducts: Number(form.numberOfProducts) || 0,
+      products: form.products.slice(0, Number(form.numberOfProducts) || 0),
+      id: editing ? editing.id : generateId(),
+    };
     
-    // 5. تحديث البيانات في الخلفية
-    queryClient.invalidateQueries(); 
-
-  } catch (error: any) {
-    // 6. لو اتمسح فعلاً بس السيرفر رد متأخر أو بـ 404، متبينيش إيرور لليوزر
-    if (error.response?.status === 404) {
-      setDeleteOpen(false);
-      setDeleting(null);
-      queryClient.invalidateQueries();
-      return; 
+    let updated;
+    if (editing) {
+      updated = packingLists.map(p => p.id === editing.id ? plData : p);
+      toast.success('Packing List updated successfully');
+    } else {
+      updated = [...packingLists, plData];
+      toast.success('Packing List created successfully');
     }
+    
+    // Sort by date
+    updated.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    setPackingLists(updated);
+    savePackingLists(updated);
+    setEditOpen(false);
+  };
 
-    console.error("Delete Error:", error);
-    toast.error('فشل الحذف.. تأكد من اتصال السيرفر');
-  }
-};
-if (isLoading) return (
-  <div className="flex h-96 items-center justify-center">
-    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-  </div>
-);
+  const handleDelete = () => {
+    if (!deleting) return;
+    const updated = packingLists.filter(p => p.id !== deleting.id);
+    setPackingLists(updated);
+    savePackingLists(updated);
+    toast.success('Packing List removed');
+    setDeleting(null);
+  };
 
   return (
     <div className="pb-10">

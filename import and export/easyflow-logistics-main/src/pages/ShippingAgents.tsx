@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import { FileViewer } from '@/components/FileViewer';
-import { ShippingAgent, formatCurrency } from '@/data/store';
+import { getShippingAgents, saveShippingAgents, getShippingAgentRecords, generateId, ShippingAgent, getTransactions, formatCurrency } from '@/data/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,156 +12,76 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2, Ship, Globe, Mail, User, Phone, Receipt, Paperclip } from 'lucide-react';
 import { toast } from 'sonner';
-import axios from 'axios';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 export default function ShippingAgents() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  // 1. جلب البيانات من الداتابيز
-  const { data: agents = [], isLoading } = useQuery({
-    queryKey: ['shippingAgents'],
-    queryFn: () => axios.get('http://localhost:5000/api/shipping-agents').then(res => res.data)
-  });
-
-const { data: records = [] } = useQuery({
-  queryKey: ['shippingAgentRecords'],
-  queryFn: () => axios.get('http://localhost:5000/api/shipping-agent-records').then(res => res.data)
-});
-
-  const { data: transactions = [] } = useQuery({
-    queryKey: ['transactions'],
-    queryFn: () => axios.get('http://localhost:5000/api/transactions').then(res => res.data)
-  });
+  const [agents, setAgents] = useState<ShippingAgent[]>(getShippingAgents);
+  const records = useMemo(() => getShippingAgentRecords(), []);
+  const transactions = useMemo(() => getTransactions(), []);
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<ShippingAgent | null>(null);
   const [deleting, setDeleting] = useState<ShippingAgent | null>(null);
-  const [form, setForm] = useState({ name: '',company: '', address: '', telephone: '', personalNumber: '', email: '', attachmentUrl: '' });
+  const [form, setForm] = useState({ name: '', address: '', telephone: '', personalNumber: '', email: '', attachmentUrl: '' });
   const [viewingFile, setViewingFile] = useState<string | null>(null);
 
   const openNew = () => {
     setEditing(null);
-    setForm({ name: '',company: '', address: '', telephone: '', personalNumber: '', email: '', attachmentUrl: '' });
+    setForm({ name: '', address: '', telephone: '', personalNumber: '', email: '', attachmentUrl: '' });
     setEditOpen(true);
   };
-const openEdit = (a: ShippingAgent) => {
-  setEditing(a);
-  setForm({ 
-    name: a.name,
-    company: a.company || '', 
-    address: a.address || '', 
-    telephone: a.telephone || '', 
-    personalNumber: a.personalNumber || '', 
-    email: a.email || '', 
-    attachmentUrl: a.attachmentUrl || '' 
-  });
-  setEditOpen(true);
-};
 
-const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-
-  const formData = new FormData();
-  formData.append('file', file);
-
-  // اظهر لودنج عشان اليوزر يستنى
-  const loadingToast = toast.loading('Uploading new file...');
-
-  try {
-    const res = await axios.post('http://localhost:5000/api/upload', formData);
-    setForm(f => ({ ...f, attachmentUrl: res.data.url }));
-    toast.dismiss(loadingToast);
-    toast.success('New file ready to save');
-  } catch (error) {
-    toast.dismiss(loadingToast);
-    toast.error('Upload failed - keeping old file');
-  }
-};
-
-const handleSave = async () => {
-  if (!form.name.trim()) { 
-    toast.error('Please enter a name.'); 
-    return; 
-  }
-
-  // ✅ التأكد من جلب البيانات الأصلية للوكيل لو إحنا في وضع التعديل
-  const originalAgent = editing ? agents.find(a => a.id === editing.id) : null;
-
-  const payload = {
-    ...form,
-    company: form.company || null,
-    address: form.address || null,
-    telephone: form.telephone || null,
-    personalNumber: form.personalNumber || null,
-    email: form.email || null,
-    // ✅ الحماية: لو الـ attachmentUrl في الفورم فاضي بس كان موجود أصلاً في الداتابيز، نرجعه تاني
-    attachmentUrl: form.attachmentUrl || (originalAgent ? originalAgent.attachmentUrl : null)
+  const openEdit = (a: ShippingAgent) => {
+    setEditing(a);
+    setForm({ name: a.name, address: a.address || '', telephone: a.telephone || '', personalNumber: a.personalNumber || '', email: a.email || '', attachmentUrl: a.attachmentUrl || '' });
+    setEditOpen(true);
   };
 
-  try {
-    const url = editing 
-      ? `http://localhost:5000/api/shipping-agents/${editing.id}` 
-      : 'http://localhost:5000/api/shipping-agents';
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
     
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Maximum size is 5MB.');
+      if (e.target) e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setForm(f => ({ ...f, attachmentUrl: event.target!.result as string }));
+        toast.success('File attached to form.');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = () => {
+    if (!form.name.trim()) { toast.error('Please enter a name.'); return; }
+    let updated: ShippingAgent[];
     if (editing) {
-      await axios.put(url, payload);
+      updated = agents.map(a => a.id === editing.id ? { ...a, ...form } : a);
+      toast.success(`"${form.name}" has been updated!`);
     } else {
-      await axios.post(url, payload);
+      updated = [...agents, { id: generateId(), ...form }];
+      toast.success(`"${form.name}" has been added!`);
     }
-
-    toast.success(editing ? `"${form.name}" updated!` : `"${form.name}" added!`);
-    
-    // ✅ تحديث الكاش وإغلاق المودال بترتيب صحيح
-    await queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
+    setAgents(updated);
+    saveShippingAgents(updated);
     setEditOpen(false);
-  } catch (error: any) {
-    console.error("Save Error:", error);
-    toast.error(error.response?.data?.error || 'Failed to save to database');
-  }
-};
-const handleDelete = async () => {
+  };
+
+  const handleDelete = useCallback(() => {
     if (!deleting) return;
-    
-    const idToDelete = deleting.id;
-    const nameToDelete = deleting.name;
-
-    try {
-        // 1. اخفي المودال وصفر الـ State "فوراً" قبل أي شيء
-        setDeleteOpen(false);
-        setDeleting(null);
-
-        // 2. نفذ الطلب في الخلفية
-        const response = await axios.delete(`http://localhost:5000/api/shipping-agents/${idToDelete}`);
-
-        // 3. لو السيرفر رد بنجاح (Status 200)
-        if (response.status === 200) {
-            toast.success(`"${nameToDelete}" removed successfully.`);
-            // تحديث البيانات من السيرفر للتأكد
-            queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
-        }
-
-    } catch (error: any) {
-        console.error("❌ Delete Error:", error);
-
-        // 4. لو السيرفر قال مش موجود (404) معناه اتمسح فعلاً فمش هنطلع Error
-        if (error.response?.status === 404) {
-            queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
-            return;
-        }
-
-        // فقط في حالة وجود خطأ حقيقي (مثل انقطاع الإنترنت)
-        toast.error("Could not delete record. Please check your connection.");
-        // نعيد تحديث البيانات لإظهار العنصر الذي فشل حذفه
-        queryClient.invalidateQueries({ queryKey: ['shippingAgents'] });
-    }
-};
-
-  if (isLoading) return <div className="p-8 text-center">Loading Agents...</div>;
+    const updated = agents.filter(a => a.id !== deleting.id);
+    setAgents(updated);
+    saveShippingAgents(updated);
+    toast.success(`"${deleting.name}" has been removed.`);
+    setDeleting(null);
+  }, [deleting, agents]);
 
   return (
     <div>
@@ -174,22 +94,21 @@ const handleDelete = async () => {
           
           let totalEgp = 0, totalEuro = 0, totalUsd = 0;
           agentRecords.forEach(r => {
-            if (r.costEgp) totalEgp += Number(r.costEgp);
-            if (r.costEuro) totalEuro += Number(r.costEuro);
-            if (r.costUsd) totalUsd += Number(r.costUsd);
+            if (r.costEgp) totalEgp += r.costEgp;
+            if (r.costEuro) totalEuro += r.costEuro;
+            if (r.costUsd) totalUsd += r.costUsd;
           });
 
           let paidEgp = 0, paidEuro = 0, paidUsd = 0;
-          transactions.filter(t => t.relatedId === String(a.id)).forEach(t => {
-            const amt = Number(t.amount || 0);
+          transactions.filter(t => t.relatedId === a.id).forEach(t => {
             if (t.type === 'outgoing') {
-              if (t.currency === 'EGP') paidEgp += amt;
-              else if (t.currency === 'EUR') paidEuro += amt;
-              else if (t.currency === 'USD') paidUsd += amt;
+              if (t.currency === 'EGP') paidEgp += t.amount;
+              else if (t.currency === 'EUR') paidEuro += t.amount;
+              else if (t.currency === 'USD') paidUsd += t.amount;
             } else if (t.type === 'incoming') {
-              if (t.currency === 'EGP') paidEgp -= amt;
-              else if (t.currency === 'EUR') paidEuro -= amt;
-              else if (t.currency === 'USD') paidUsd -= amt;
+              if (t.currency === 'EGP') paidEgp -= t.amount;
+              else if (t.currency === 'EUR') paidEuro -= t.amount;
+              else if (t.currency === 'USD') paidUsd -= t.amount;
             }
           });
 
@@ -230,6 +149,7 @@ const handleDelete = async () => {
                 </div>
               </div>
 
+              {/* Stats */}
               <div className="mt-4 pt-3 border-t space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5 text-muted-foreground">Records</span>
@@ -262,48 +182,17 @@ const handleDelete = async () => {
           <DialogHeader><DialogTitle>{editing ? t('Edit Shipping Agent', 'Edit Shipping Agent') : t('Add Shipping Agent', 'Add Shipping Agent')}</DialogTitle></DialogHeader>
           <div className="space-y-4 max-h-[60vh] overflow-y-auto px-1">
             <div><Label>{t('Name *', 'Name *')}</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
-            <div><Label>{t('Company', 'Company')}</Label><Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
             <div><Label>{t('Address', 'Address')}</Label><Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} /></div>
             <div><Label>{t('Telephone', 'Telephone')}</Label><Input value={form.telephone} onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))} type="tel" dir="ltr" className="text-left" /></div>
             <div><Label>{t('Personal Number', 'Personal Number')}</Label><Input value={form.personalNumber} onChange={e => setForm(f => ({ ...f, personalNumber: e.target.value }))} type="tel" dir="ltr" className="text-left" /></div>
             <div><Label>{t('Email', 'Email')}</Label><Input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} type="email" /></div>
-       <div className="border-t pt-4 mt-2">
-  <Label className="flex justify-between items-center mb-2">
-    {t('Attachment', 'Attachment')}
-    {/* ✅ لو فيه ملف قديم، نظهر زرار للمعاينة واسم الملف */}
-    {form.attachmentUrl && (
-      <button 
-        type="button" // مهم جداً عشان ما يعملش Submit للفورم
-        onClick={() => setViewingFile(form.attachmentUrl)}
-        className="text-[11px] text-blue-600 hover:bg-blue-50 px-2 py-1 rounded border border-blue-200 flex items-center gap-1 transition-colors"
-      >
-        <Paperclip className="h-3 w-3" /> {t('View Current File', 'View Current File')}
-      </button>
-    )}
-  </Label>
-  
-  <div className="flex flex-col gap-2">
-    <div className="flex items-center gap-3">
-      <Input 
-        type="file" 
-        accept="image/*,.pdf,.xlsx,.xls,.csv" 
-        onChange={handleFileUpload} 
-        className="flex-1 file:bg-blue-50 file:text-blue-700 file:border-0 file:rounded-md" 
-      />
-      {form.attachmentUrl && (
-        <Badge variant="default" className="bg-green-500 text-white shrink-0 shadow-sm">
-          ✓ Loaded
-        </Badge>
-      )}
-    </div>
-    {/* نص توضيحي للمستخدم */}
-    {form.attachmentUrl && (
-      <p className="text-[10px] text-muted-foreground italic">
-        * Uploading a new file will replace the current one.
-      </p>
-    )}
-  </div>
-</div>
+            <div className="border-t pt-4 mt-2">
+              <Label>{t('Attachment (Photo/PDF/Excel)', 'Attachment (Photo/PDF/Excel)')}</Label>
+              <div className="flex items-center gap-3 mt-1">
+                <Input type="file" accept="image/*,.pdf,.xlsx,.xls,.csv" onChange={handleFileUpload} className="flex-1" />
+                {form.attachmentUrl && <Badge variant="default" className="bg-green-500 hover:bg-green-600 text-white shrink-0">Attached</Badge>}
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>{t('Cancel', 'Cancel')}</Button>
@@ -313,6 +202,8 @@ const handleDelete = async () => {
       </Dialog>
 
       <DeleteConfirmDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={handleDelete} itemName={deleting?.name || ''} />
+
+      {/* File Viewer Component */}
       <FileViewer fileUrl={viewingFile} onClose={() => setViewingFile(null)} />
     </div>
   );

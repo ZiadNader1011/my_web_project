@@ -24,14 +24,20 @@ export const createSupplier = async (req, res) => {
     }
 };
 
-// 2. تعديل مورد (Update)
 export const updateSupplier = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
+        
+        // إذا فشل التحويل لرقم (بسبب generateId)، نبحث عن المورد بالاسم أو نأخذ أول ID متوفر كـ Fallback
+        let numericId = Number(id);
+        if (isNaN(numericId)) {
+            const found = await prisma.supplier.findFirst({ where: { name: data.name } });
+            numericId = found ? found.id : 0;
+        }
 
         const updated = await prisma.supplier.update({
-            where: { id: Number(id) },
+            where: { id: numericId },
             data: {
                 name: data.name,
                 country: data.country,
@@ -44,16 +50,14 @@ export const updateSupplier = async (req, res) => {
             }
         });
 
-        res.json(updated);
+        res.json({ ...updated, id: String(updated.id) });
     } catch (error) {
-        console.error("Update Error:", error.message);
         res.status(400).json({ error: "Failed to update: " + error.message });
     }
 };
 export const getSuppliers = async (req, res) => {
     try {
         const suppliers = await prisma.supplier.findMany({
-            // ✅ التعديل هنا: بنطلب من Prisma يعد المنتجات المرتبطة بكل مورد
             include: {
                 _count: {
                     select: { products: true } 
@@ -62,9 +66,14 @@ export const getSuppliers = async (req, res) => {
             orderBy: { name: 'asc' }
         });
         
-        res.json(suppliers);
+        // تحويل الـ id إلى string لتوافق كاش الفرونت إند تماماً
+        const formatted = suppliers.map(s => ({
+            ...s,
+            id: String(s.id)
+        }));
+        
+        res.json(formatted);
     } catch (error) {
-       
         res.status(500).json({ error: "حدث خطأ أثناء جلب الموردين" });
     }
 };

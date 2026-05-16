@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+
 export const getAllJobs = async (req, res) => {
     try {
         const jobs = await prisma.job.findMany({
@@ -6,17 +7,23 @@ export const getAllJobs = async (req, res) => {
                 client: true,
                 supplier: true,
                 shippingRecords: true,
-                products: {
-                    include: {
-                        product: true 
-                    }
-                }
+                products: { include: { product: true } }
             },
             orderBy: { createdAt: 'desc' }
         });
-        res.json(jobs);
+        
+        const formatted = jobs.map(j => ({
+            ...j,
+            id: String(j.id),
+            clientId: j.clientId ? String(j.clientId) : undefined,
+            supplierId: j.supplierId ? String(j.supplierId) : undefined,
+            products: (j.products || []).map(p => ({
+                ...p,
+                productId: String(p.productId)
+            }))
+        }));
+        res.json(formatted);
     } catch (error) {
-        console.error("Fetch Jobs Error:", error);
         res.status(500).json({ error: "Failed to fetch jobs" });
     }
 };
@@ -24,14 +31,9 @@ export const getAllJobs = async (req, res) => {
 export const createJob = async (req, res) => {
     try {
         const data = req.body;
-
         if (data.jobNumber) {
-            const existingJob = await prisma.job.findUnique({
-                where: { jobNumber: data.jobNumber }
-            });
-            if (existingJob) {
-                return res.status(400).json({ error: "رقم العملية موجود بالفعل." });
-            }
+            const existingJob = await prisma.job.findUnique({ where: { jobNumber: data.jobNumber } });
+            if (existingJob) return res.status(400).json({ error: "رقم العملية موجود بالفعل." });
         }
 
         const validProducts = (data.products || [])
@@ -47,7 +49,6 @@ export const createJob = async (req, res) => {
         const newJob = await prisma.job.create({
             data: {
                 jobNumber: data.jobNumber?.trim() || `JO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-                jobNumber: data.jobNumber || `JOB-${Date.now()}`,
                 title: data.title || "Untitled Job",
                 status: data.status || "active",
                 operationType: data.operationType || "export",
@@ -59,72 +60,56 @@ export const createJob = async (req, res) => {
                 rawMaterialPricePerTon: parseFloat(data.rawMaterialPricePerTon) || 0,
                 rawMaterialWeight: parseFloat(data.rawMaterialWeight) || 0,
                 pettyCash: parseFloat(data.pettyCash) || 0,
-               
-                products: {
-                    create: validProducts
-                }
+                products: { create: validProducts }
             },
             include: { products: true }
         });
-
-        res.status(201).json(newJob);
+        res.status(201).json({ ...newJob, id: String(newJob.id) });
     } catch (error) {
-        console.error("Create Job Error:", error);
-        res.status(500).json({ error: "خطأ في قاعدة البيانات: تأكد من صحة معرفات المنتجات والعملاء." });
+        res.status(500).json({ error: "خطأ في قاعدة البيانات الداخلي" });
     }
 };
-
 
 export const updateJob = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
+        const numericId = Number(id);
 
         const updatedJob = await prisma.job.update({
-            where: { id: Number(id) },
+            where: { id: isNaN(numericId) ? 0 : numericId },
             data: {
-                // تحديث الحقول الأساسية
                 title: data.title,
                 status: data.status,
                 operationType: data.operationType,
-                currency: data.currency, // تأكدي من إضافة هذا السطر
-                notes: data.notes,       // تأكدي من إضافة هذا السطر
-                
-                // تحديث المعرفات (IDs)
+                currency: data.currency,
+                notes: data.notes,
                 clientId: data.clientId && data.clientId !== 'none' ? Number(data.clientId) : null,
                 supplierId: data.supplierId && data.supplierId !== 'none' ? Number(data.supplierId) : null,
-                
-                // تحديث الحقول المالية (مع ضمان أنها أرقام)
                 discountPercentage: parseFloat(data.discountPercentage) || 0,
                 rawMaterialPricePerTon: parseFloat(data.rawMaterialPricePerTon) || 0,
                 rawMaterialWeight: parseFloat(data.rawMaterialWeight) || 0,
                 pettyCash: parseFloat(data.pettyCash) || 0,
-
-                // تحديث المنتجات المرتبطة (مسح القديم وإضافة الجديد)
                 products: {
                     deleteMany: {}, 
                     create: (data.products || [])
-                        .filter(p => p.productId && p.productId !== 'none') // فلترة المنتجات غير الصالحة
+                        .filter(p => p.productId && p.productId !== 'none')
                         .map(p => ({
                             productId: Number(p.productId),
                             quantity: parseFloat(p.quantity) || 1,
                             unitPrice: parseFloat(p.unitPrice) || 0,
                             currency: p.currency || data.currency || "USD",
-                            variety: p.variety || null,
-                            // يمكنك إضافة الحقول الإضافية هنا مثل caliber و grade لو موجودة في الموديل
+                            variety: p.variety || null
                         }))
                 }
             }
         });
-
-        res.json(updatedJob);
+        res.json({ ...updatedJob, id: String(updatedJob.id) });
     } catch (error) {
-        console.error("Update Job Error:", error);
-        res.status(400).json({ error: "فشل تحديث البيانات، تأكد من صحة المدخلات." });
+        res.status(400).json({ error: "فشل تحديث البيانات." });
     }
 };
 
-// 4. جلب وظيفة واحدة
 export const getJobById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -137,58 +122,19 @@ export const getJobById = async (req, res) => {
                 products: { include: { product: true } }
             }
         });
-
         if (!job) return res.status(404).json({ error: "Job not found" });
-
-        // إضافة الحسابات المالية للرد (Response)
-        const summary = calculateJobSummary(job);
-        
-        res.json({
-            ...job,
-            financialSummary: summary
-        });
+        res.json({ ...job, id: String(job.id) });
     } catch (error) {
         res.status(500).json({ error: "Failed to fetch job details" });
     }
 };
-const calculateJobSummary = (job) => {
-    // 1. حساب تكلفة المنتجات
-    const productsTotal = job.products?.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0) || 0;
 
-    // 2. حساب تكلفة المواد الخام (Price per Ton * Weight)
-    const rawMaterialsTotal = (job.rawMaterialPricePerTon || 0) * (job.rawMaterialWeight || 0);
-
-    // 3. حساب مصاريف الشحن (بكل العملات)
-    const shippingTotalEgp = job.shippingRecords?.reduce((sum, r) => sum + (r.costEgp || 0), 0) || 0;
-    const shippingTotalUsd = job.shippingRecords?.reduce((sum, r) => sum + (r.costUsd || 0), 0) || 0;
-    const shippingTotalEuro = job.shippingRecords?.reduce((sum, r) => sum + (r.costEuro || 0), 0) || 0;
-
-    // 4. إجمالي التكلفة (بافتراض العملة الرئيسية للـ Job)
-    const totalExcludingShipping = productsTotal + rawMaterialsTotal + (job.pettyCash || 0);
-    const finalTotal = totalExcludingShipping - (totalExcludingShipping * ((job.discountPercentage || 0) / 100));
-
-    return {
-        productsTotal,
-        rawMaterialsTotal,
-        shippingSummary: {
-            egp: shippingTotalEgp,
-            usd: shippingTotalUsd,
-            euro: shippingTotalEuro
-        },
-        netTotal: finalTotal // التكلفة الصافية بعد الخصم (بدون الشحن لأن الشحن عملاته متعددة)
-    };
-};
-
-// 5. حذف الوظيفة
 export const deleteJob = async (req, res) => {
     try {
         const { id } = req.params;
-        await prisma.job.delete({
-            where: { id: Number(id) }
-        });
+        await prisma.job.deleteMany({ where: { id: Number(id) } });
         res.json({ message: "Job deleted successfully" });
     } catch (error) {
-        console.error("Delete Job Error:", error);
         res.status(400).json({ error: "Delete failed" });
     }
 };

@@ -41,7 +41,8 @@ export const createTransaction = async (req, res) => {
             weightInTons, packages 
         } = req.body;
 
-        if (!amount ?? !type ?? !date) {
+        // التصحيح: استخدام || بدلاً من ?? للفحص السليم
+        if (!amount || !type || !date) {
             return res.status(400).json({ error: "Missing required fields" });
         }
 
@@ -52,7 +53,7 @@ export const createTransaction = async (req, res) => {
                 amount: parseFloat(amount),
                 currency: currency ?? "USD",
                 date: new Date(date),
-                relatedId: (relatedId === 'none' ?? !relatedId) ? null : String(relatedId),
+                relatedId: (relatedId === 'none' || !relatedId) ? null : String(relatedId),
                 bank: bank ?? null,
                 blNumber: blNumber ?? null,
                 invoiceNumber: invoiceNumber ?? null,
@@ -61,7 +62,8 @@ export const createTransaction = async (req, res) => {
             }
         });
 
-        return res.status(201).json(tx);
+        // تحويل الـ id والنواتج لنصوص لترضي كاش الـ store.ts
+        return res.status(201).json({ ...tx, id: String(tx.id) });
     } catch (error) {
         console.error("❌ Create Error:", error);
         return res.status(500).json({ error: "Failed to create entry" });

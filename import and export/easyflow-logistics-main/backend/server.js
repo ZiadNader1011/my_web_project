@@ -7,28 +7,14 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { fileURLToPath } from 'url';
 import compression from 'compression';
-import cron from 'node-cron';
 
 
-cron.schedule('0 * * * *', async () => {
-  console.log('🔄 Running Dashboard Auto-Refresh...');
-  try {
-    await prisma.$executeRaw`REFRESH MATERIALIZED VIEW dashboard_view;`;
-    console.log('✅ Dashboard View Updated');
-  } catch (err) {
-    console.error('❌ Auto-Refresh Failed', err);
-  }
-});
-
-// حل مشكلة الـ BigInt
 BigInt.prototype.toJSON = function() { return Number(this) };
 
-// إعداد __dirname لأنها غير مدعومة في نظام الـ ES Modules تلقائياً
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// استيراد الـ Routes (لازم ينتهوا بـ .js)
-import dashboardRoutes from './routes/dashboardRoutes.js';
+import archiveRoutes from './routes/archiveRoutes.js';
 import supplierRoutes from './routes/supplierRoutes.js';
 import jobRoutes from './routes/jobRoutes.js';
 import clientRoutes from './routes/clientRoutes.js';
@@ -42,6 +28,7 @@ import commissionRoutes from './routes/commissionRoutes.js';
 import operationRoutes from './routes/operationRoutes.js';
 import financialRoutes from './routes/financialRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+
 import morgan from 'morgan';
 import bankRoutes from './routes/bankRoutes.js';
 
@@ -88,13 +75,13 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/containers', containerRoutes); 
 app.use('/api/packing-lists', packingListRoutes);
+app.use('/api/archive', archiveRoutes);
 app.use('/api/shipping-agents', shippingAgentRoutes); 
 app.use('/api/shipping-agent-records', shippingAgentRecordRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/commissions', commissionRoutes);
 app.use('/api/operations', operationRoutes);
 app.use('/api/transactions', financialRoutes);
-app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/banks', bankRoutes);
 

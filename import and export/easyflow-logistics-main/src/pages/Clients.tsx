@@ -1,34 +1,24 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
+import { getClients, saveClients, getJobs, getTransactions, generateId, Client, sumByCurrency, computeBalances, formatBalanceObj } from '@/data/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AccountStatement } from '@/components/AccountStatement';
 import { Plus, Pencil, Trash2, Users, Globe, Mail, User, Briefcase, DollarSign, Receipt, Phone } from 'lucide-react';
 import { toast } from 'sonner';
-import { Client} from '@/data/store';
-import axios from 'axios';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
-const API_BASE_URL = 'http://localhost:5000/api/clients';
-
 
 export default function Clients() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-const { data: clients = [], isLoading } = useQuery({
-  queryKey: ['clients'],
-  queryFn: async () => {
-    const res = await axios.get(API_BASE_URL);
-    return res.data;
-  }
-});
+  const [clients, setClients] = useState<Client[]>(getClients);
+  const jobs = useMemo(() => getJobs(), []);
+  const transactions = useMemo(() => getTransactions(), []);
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -48,84 +38,29 @@ const { data: clients = [], isLoading } = useQuery({
     setEditOpen(true);
   };
 
-const handleSave = async () => {
-  if (!form.name.trim()) {
-    toast.error('Please enter a client name.');
-    return;
-  }
-
-  try {
+  const handleSave = () => {
+    if (!form.name.trim()) { toast.error('Please enter a client name.'); return; }
+    let updated: Client[];
     if (editing) {
-     await axios.put(`http://localhost:5000/api/clients/${Number(editing.id)}`, form);
-
-      toast.success(`"${form.name}" updated! ✨`);
+      updated = clients.map(c => c.id === editing.id ? { ...c, ...form } : c);
+      toast.success(`"${form.name}" has been updated! ✨`);
     } else {
-      await axios.post(
-        'http://localhost:5000/api/clients',
-        form
-      );
-
-      toast.success(`"${form.name}" added! 🎉`);
+      updated = [...clients, { id: generateId(), ...form }];
+      toast.success(`"${form.name}" has been added! 🎉`);
     }
-
-    queryClient.invalidateQueries({
-      queryKey: ['clients']
-    });
-
+    setClients(updated);
+    saveClients(updated);
     setEditOpen(false);
-  } catch (error) {
-    toast.error('Failed to save client');
-  }
-};
-const handleDelete = async () => {
-  if (!deleting) return;
+  };
 
-  // نخزن الاسم في متغير ثابت عشان لو الـ state اتصفرت بسرعة الرسالة متطلعش فاضية
-  const clientName = deleting.name;
-
-  try {
-    // 1. تنفيذ طلب الحذف
-    await axios.delete(`http://localhost:5000/api/clients/${Number(deleting.id)}`);
-
-    // 2. إظهار رسالة النجاح فوراً
-    toast.success(`"${clientName}" has been removed.`);
-
-    // 3. إغلاق المودال وتصفير الحالة
-    setDeleteOpen(false);
+  const handleDelete = useCallback(() => {
+    if (!deleting) return;
+    const updated = clients.filter(c => c.id !== deleting.id);
+    setClients(updated);
+    saveClients(updated);
+    toast.success(`"${deleting.name}" has been removed.`);
     setDeleting(null);
-
-    // 4. تحديث البيانات (يفضل يكون آخر حاجة)
-    await queryClient.invalidateQueries({
-      queryKey: ['clients']
-    });
-
-  } catch (error: any) {
-    console.error("Delete Error:", error);
-    
-    // إغلاق المودال في حالة الخطأ برضه عشان ميفضلش معلق
-    setDeleteOpen(false);
-
-    if (error.response?.status === 404) {
-      setDeleting(null);
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
-      return;
-    }
-
-    // إظهار الخطأ فقط لو فعلاً السيرفر رجع فشل
-    toast.error(
-      error.response?.data?.error || 'Failed to delete client'
-    );
-  }
-};
-  
-if (isLoading) {
-  return (
-    <div className="flex justify-center p-20">
-      <Loader2 className="h-10 w-10 animate-spin text-primary" />
-    </div>
-  );
-}
-
+  }, [deleting, clients]);
 
   return (
     <div>
@@ -134,6 +69,59 @@ if (isLoading) {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {clients.map(c => {
+          const clientJobs = jobs.filter(j => j.clientId === c.id);
+
+          let manualTxs = transactions.filter(t => {
+            if (t.entityId) return t.entityId === c.id;
+            if (t.relatedId === c.id) return true;
+            if (t.relatedId && clientJobs.some(j => j.id === t.relatedId)) {
+              return t.type === 'incoming';
+            }
+            return false;
+          });
+
+          const autoTxs: any[] = [];
+          clientJobs.forEach(job => {
+            const hasValidProducts = job.products && job.products.some(p => (Number(p.quantity) || 0) > 0 && (Number(p.unitPrice) || 0) > 0);
+            const discount = job.discountPercentage || 0;
+            if (hasValidProducts) {
+              const currTotals: Record<string, number> = {};
+              job.products.forEach(p => {
+                const currency = p.currency || job.currency;
+                const val = (Number(p.quantity) || 0) * (Number(p.unitPrice) || 0);
+                const finalVal = val - (val * (discount / 100));
+                currTotals[currency] = (currTotals[currency] || 0) + finalVal;
+              });
+              Object.entries(currTotals).forEach(([currency, val]) => {
+                if (val > 0) autoTxs.push({ type: 'raw_material', amount: val, currency });
+              });
+            } else if (job.totalPrice > 0) {
+              const finalTotal = job.totalPrice - (job.totalPrice * (discount / 100));
+              autoTxs.push({ type: 'raw_material', amount: finalTotal, currency: job.currency });
+            }
+          });
+
+          const clientTransactions = [...manualTxs, ...autoTxs];
+
+          const jobValueObj: Record<string, number> = {};
+          const balancesObj: Record<string, number> = {};
+
+          clientTransactions.forEach(t => {
+            const currency = t.currency || 'USD';
+            if (t.type === 'incoming') {
+              balancesObj[currency] = (balancesObj[currency] || 0) - t.amount;
+            } else {
+              jobValueObj[currency] = (jobValueObj[currency] || 0) + t.amount;
+              balancesObj[currency] = (balancesObj[currency] || 0) + t.amount;
+            }
+          });
+
+          // Filter out zero balances
+          Object.keys(balancesObj).forEach(k => { if (Math.abs(balancesObj[k]) < 0.001) delete balancesObj[k]; });
+          Object.keys(jobValueObj).forEach(k => { if (Math.abs(jobValueObj[k]) < 0.001) delete jobValueObj[k]; });
+
+          const hasBalances = Object.keys(balancesObj).length > 0;
+
           return (
             <div key={c.id} className="rounded-xl bg-card p-5 shadow-sm border transition-shadow hover:shadow-md">
               <div className="flex items-start justify-between">
@@ -164,17 +152,17 @@ if (isLoading) {
               <div className="mt-4 pt-3 border-t space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5 text-muted-foreground"><Briefcase className="h-3 w-3" />{t('Jobs', 'Operations')}</span>
-                  <Badge variant="outline" className="text-xs">{c.operationsCount || 0}</Badge>
+                  <Badge variant="outline" className="text-xs">{clientJobs.length}</Badge>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5 text-muted-foreground"><DollarSign className="h-3 w-3" />{t('Total Job Value', 'Operations Value')}</span>
-                  <span className="font-medium text-xs">{c.operationsValue || 0} USD</span>
+                  <span className="font-medium text-xs">{formatBalanceObj(jobValueObj)}</span>
                 </div>
-               {Number(c.remainingBalance) > 0 && (
+                {hasBalances && (
                   <div className="flex items-center justify-between text-sm items-start">
                     <span className="flex items-center gap-1.5 text-muted-foreground whitespace-nowrap"><DollarSign className="h-3 w-3 mt-0.5" />{t('Remaining Balance', 'Client Owes')}</span>
                     <span className="font-medium text-destructive/80 text-xs text-right max-w-[150px]">
-                      {c.remainingBalance || 0} USD
+                      {formatBalanceObj(balancesObj)}
                     </span>
                   </div>
                 )}

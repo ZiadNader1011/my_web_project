@@ -1,12 +1,21 @@
 import { prisma } from '../lib/prisma.js';
 
-
 export const getPackingLists = async (req, res) => {
     try {
         const lists = await prisma.packingList.findMany({
             orderBy: { createdAt: 'desc' }
         });
-        return res.status(200).json(lists);
+        
+        // تحويل المعرفات لنصوص لإرضاء كاش الفرونت إند تماماً
+        const formatted = lists.map(list => ({
+            ...list,
+            id: String(list.id),
+            containerNumbers: typeof list.containerNumbers === 'string' ? JSON.parse(list.containerNumbers) : (list.containerNumbers || []),
+            products: typeof list.products === 'string' ? JSON.parse(list.products) : (list.products || []),
+            attachments: typeof list.attachments === 'string' ? JSON.parse(list.attachments) : (list.attachments || [])
+        }));
+        
+        return res.status(200).json(formatted);
     } catch (error) {
         console.error("❌ Fetch PackingLists Error:", error);
         return res.status(500).json({ error: "Internal Server Error" });
@@ -17,7 +26,6 @@ export const createPackingList = async (req, res) => {
     try {
         const data = req.body;
 
-        // 1. معالجة الملفات الجديدة المرفوعة
         const newUploadedFiles = (req.files || []).map(file => ({
             id: Math.random().toString(36).substr(2, 9),
             url: `${req.protocol}://${req.get('host')}/uploads/packing-lists/${file.filename}`,
@@ -25,11 +33,8 @@ export const createPackingList = async (req, res) => {
             createdAt: new Date().toISOString()
         }));
 
-        // 2. تحويل النصوص القادمة من FormData لمصفوفات
         const products = typeof data.products === 'string' ? JSON.parse(data.products) : (data.products || []);
         const containerNumbers = typeof data.containerNumbers === 'string' ? JSON.parse(data.containerNumbers) : (data.containerNumbers || []);
-        
-        // 3. استلام المرفقات القديمة (إن وجدت) ودمجها مع الجديدة
         const existingAttachments = data.existingAttachments ? JSON.parse(data.existingAttachments) : [];
         const finalAttachments = [...existingAttachments, ...newUploadedFiles];
 
@@ -51,10 +56,10 @@ export const createPackingList = async (req, res) => {
                 numberOfProducts: parseInt(data.numberOfProducts) || 0,
                 containerNumbers,
                 products,
-                attachments: finalAttachments // تم التصحيح هنا ✅
+                attachments: finalAttachments 
             }
         });
-        return res.status(201).json(newList);
+        return res.status(201).json({ ...newList, id: String(newList.id) });
     } catch (error) {
         console.error("❌ Create PackingList Error:", error);
         return res.status(400).json({ error: "Failed to create: " + error.message });
@@ -67,7 +72,6 @@ export const updatePackingList = async (req, res) => {
         const data = req.body;
         const numericId = parseInt(id);
 
-        // 1. معالجة الملفات الجديدة المرفوعة
         const newUploadedFiles = (req.files || []).map(file => ({
             id: Math.random().toString(36).substr(2, 9),
             url: `${req.protocol}://${req.get('host')}/uploads/packing-lists/${file.filename}`,
@@ -75,19 +79,16 @@ export const updatePackingList = async (req, res) => {
             createdAt: new Date().toISOString()
         }));
 
-        
         const keptAttachments = data.existingAttachments ? JSON.parse(data.existingAttachments) : [];
         const finalAttachments = [...keptAttachments, ...newUploadedFiles];
-
-       
         const products = typeof data.products === 'string' ? JSON.parse(data.products) : data.products;
         const containerNumbers = typeof data.containerNumbers === 'string' ? JSON.parse(data.containerNumbers) : data.containerNumbers;
 
         const updated = await prisma.packingList.update({
-            where: { id: numericId },
+            where: { id: isNaN(numericId) ? 0 : numericId },
             data: {
                 date: data.date ? new Date(data.date) : undefined,
-               shippingDate: data.shippingDate ? new Date(data.shippingDate) : null,
+                shippingDate: data.shippingDate ? new Date(data.shippingDate) : null,
                 blNumber: data.blNumber,
                 clientName: data.clientName,
                 invoiceNumber: data.invoiceNumber,
@@ -104,7 +105,7 @@ export const updatePackingList = async (req, res) => {
                 attachments: finalAttachments 
             }
         });
-        return res.status(200).json(updated);
+        return res.status(200).json({ ...updated, id: String(updated.id) });
     } catch (error) {
         console.error("❌ Update PackingList Error:", error);
         return res.status(400).json({ error: "Update failed" });
@@ -113,23 +114,10 @@ export const updatePackingList = async (req, res) => {
 
 export const deletePackingList = async (req, res) => {
     try {
-        const { id } = req.params;
-        const numericId = parseInt(id);
-
-        if (isNaN(numericId)) return res.status(400).json({ error: "Invalid ID format" });
-
-        const existing = await prisma.packingList.findUnique({ where: { id: numericId } });
-        if (!existing) return res.status(404).json({ error: "Record not found" });
-
-        await prisma.packingList.delete({ where: { id: numericId } });
-        
-        return res.status(200).json({ 
-            success: true, 
-            message: "Deleted successfully" 
-        });
-
+        const numericId = parseInt(req.params.id);
+        await prisma.packingList.deleteMany({ where: { id: isNaN(numericId) ? 0 : numericId } });
+        return res.status(200).json({ success: true, message: "Deleted successfully" });
     } catch (error) {
-        console.error("❌ Delete PackingList Error:", error);
         return res.status(500).json({ error: "Delete operation failed" });
     }
 };

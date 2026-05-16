@@ -1,39 +1,20 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
-import { Product } from '@/data/store';
+import { getProducts, saveProducts, getSuppliers, generateId, Product } from '@/data/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Wheat ,Loader2} from 'lucide-react';
+import { Plus, Pencil, Trash2, Wheat } from 'lucide-react';
 import { toast } from 'sonner';
-import axios from 'axios';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 export default function Products() {
-  
-  const queryClient = useQueryClient();
-
-const { data: products = [], isLoading } = useQuery({
-  queryKey: ['products'],
-  queryFn: async () => (await axios.get('http://localhost:5000/api/products')).data
-});
-const { data: suppliers = [] } = useQuery({
-  queryKey: ['suppliers'],
-queryFn: async () => {
-  const res = await axios.get('http://localhost:5000/api/suppliers');
-
-  console.log(res.data);
-
-  return Array.isArray(res.data)
-    ? res.data
-    : res.data.suppliers || [];
-}});
-console.log("SUPPLIERS => ", suppliers);
   const { t } = useTranslation();
+  const [products, setProducts] = useState<Product[]>(getProducts);
+  const suppliers = getSuppliers();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -54,91 +35,42 @@ console.log("SUPPLIERS => ", suppliers);
       category: p.category, 
       supplierId: p.supplierId,
       numberOfSuppliers: p.numberOfSuppliers || (p.supplierIds?.length) || (p.supplierId ? 1 : ''),
-      supplierIds: p.supplierIds
-  ? p.supplierIds.map(id => String(id))
-  : (p.supplierId ? [String(p.supplierId)] : [])
+      supplierIds: p.supplierIds ? [...p.supplierIds] : (p.supplierId ? [p.supplierId] : [])
     });
     setEditOpen(true);
   };
 
-const handleSave = async () => {
-  if (!form.name.trim()) { 
-    toast.error('Please enter a product name.'); 
-    return; 
-  }
-  
-  // تجهيز الـ Payload بشكل يضمن إن الأرقام مبعوثة صح
-  const payload = {
-    name: form.name,
-    category: form.category,
-    numberOfSuppliers: Number(form.numberOfSuppliers) || 0,
-    // تحويل الـ IDs لأرقام (Integers) والتأكد إنها مش مصفوفة فاضية
-    supplierIds: form.supplierIds
-      .filter(id => id !== '' && id !== null)
-      .map(id => Number(id)), 
-  };
+  const handleSave = () => {
+    if (!form.name.trim()) { toast.error('Please enter a product name.'); return; }
+    
+    const formData = {
+      ...form,
+      numberOfSuppliers: Number(form.numberOfSuppliers) || 0,
+      supplierIds: form.supplierIds.slice(0, Number(form.numberOfSuppliers) || 0),
+      supplierId: form.supplierIds[0] || '', // keep legacy populated
+    };
 
-  try {
+    let updated: Product[];
     if (editing) {
-      await axios.put(`http://localhost:5000/api/products/${editing.id}`, payload);
+      updated = products.map(p => p.id === editing.id ? { ...p, ...formData } : p);
       toast.success(`"${form.name}" has been updated! ✨`);
     } else {
-      await axios.post('http://localhost:5000/api/products', payload);
+      updated = [...products, { id: generateId(), ...formData }];
       toast.success(`"${form.name}" has been added! 🎉`);
     }
-    queryClient.invalidateQueries({ queryKey: ['products'] });
+    setProducts(updated);
+    saveProducts(updated);
     setEditOpen(false);
-    setForm(emptyForm); // تصفير الفورم بعد النجاح
-  } catch (error: any) {
-    console.error("Save Error:", error.response?.data);
-    toast.error(error.response?.data?.error || 'Failed to save product to database');
-  }
-};
+  };
 
-const handleDelete = async () => {
-  // 1. لو مفيش عنصر أو فيه عملية حذف شغالة حالياً، اخرج فوراً
-  if (!deleting) return;
-
-  // خدي نسخة من الاسم والـ ID
-  const productName = deleting.name;
-  const productId = deleting.id;
-
-  try {
-    // 2. اقفلي المودال فوراً وصفرّي الـ State "قبل" ما تبعتي الطلب
-    // دي أهم خطوة عشان تمنعي أي نقرة تانية أو تداخل
-    setDeleteOpen(false);
-    setDeleting(null); 
-
-    // 3. ابعتي الطلب للسيرفر
-    await axios.delete(`http://localhost:5000/api/products/${productId}`);
-
-    // 4. لو نجح (الطلب الأول)
-    toast.success(`"${productName}" has been removed.`);
-
-    // 5. حديثي البيانات
-    queryClient.invalidateQueries({ queryKey: ['products'] });
-
-  } catch (error: any) {
-    // 6. لو الطلب فشل (أو لو ده الطلب التاني اللي لقى العنصر اتمسح خلاص)
-    console.error("Delete Error:", error);
-
-    // لو السيرفر قال مفيش عنصر (404)، ده معناه إنه اتمسح فعلاً، فمش هنطلع Error
-    if (error.response?.status === 404) {
-       queryClient.invalidateQueries({ queryKey: ['products'] });
-       return; 
-    }
-
-    // أي خطأ تاني حقيقي، نطلعه
-    toast.error('Failed to delete product');
-  }
-};
-
-
-if (isLoading) return (
-  <div className="flex h-96 items-center justify-center">
-    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-  </div>
-);
+  const handleDelete = useCallback(() => {
+    if (!deleting) return;
+    const updated = products.filter(p => p.id !== deleting.id);
+    setProducts(updated);
+    saveProducts(updated);
+    toast.success(`"${deleting.name}" has been removed.`);
+    setDeleting(null);
+  }, [deleting, products]);
 
   return (
     <div>
@@ -157,21 +89,9 @@ if (isLoading) return (
           </thead>
           <tbody>
             {products.map(p => {
-             const pSuppliers =
-  p.supplierIds && p.supplierIds.length > 0
-    ? p.supplierIds
-        .map(id =>
-          suppliers.find(
-            (s: any) => String(s.id) === String(id)
-          )?.name || 'Unknown'
-        )
-        .join(', ')
-    : (
-        suppliers.find(
-          (s: any) =>
-            String(s.id) === String(p.supplierId)
-        )?.name || '—'
-      );
+              const pSuppliers = p.supplierIds && p.supplierIds.length > 0
+                ? p.supplierIds.map(id => suppliers.find(s => s.id === id)?.name || 'Unknown').join(', ')
+                : (suppliers.find(s => s.id === p.supplierId)?.name || '—');
                 
               return (
                 <tr key={p.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
@@ -230,35 +150,18 @@ if (isLoading) return (
                 {Array.from({ length: Number(form.numberOfSuppliers) || 0 }).map((_, idx) => (
                   <div key={idx}>
                     <Label className="text-xs">Supplier {idx + 1}</Label>
- {}
-<Select
-  value={form.supplierIds[idx] ? String(form.supplierIds[idx]) : ""}
-  onValueChange={(v) => {
-    setForm(f => {
-      const newIds = [...f.supplierIds];
-      newIds[idx] = v;
-      return { ...f, supplierIds: newIds };
-    });
-  }}
->
-  <SelectTrigger>
-    <SelectValue placeholder={suppliers.length > 0 ? "Select supplier..." : "No suppliers found"} />
-  </SelectTrigger>
-
-  <SelectContent>
-    {suppliers.length > 0 ? (
-      suppliers.map((s: any) => (
-        <SelectItem key={s.id} value={String(s.id)}>
-          {s.name}
-        </SelectItem>
-      ))
-    ) : (
-      <div className="p-2 text-sm text-center text-muted-foreground">
-        No suppliers found in system
-      </div>
-    )}
-  </SelectContent>
-</Select>
+                    <Select value={form.supplierIds[idx] || ''} onValueChange={v => {
+                      setForm(f => {
+                        const newIds = [...f.supplierIds];
+                        newIds[idx] = v;
+                        return { ...f, supplierIds: newIds };
+                      });
+                    }}>
+                      <SelectTrigger><SelectValue placeholder="Select supplier..." /></SelectTrigger>
+                      <SelectContent>
+                        {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
                 ))}
               </div>
@@ -275,4 +178,3 @@ if (isLoading) return (
     </div>
   );
 }
-

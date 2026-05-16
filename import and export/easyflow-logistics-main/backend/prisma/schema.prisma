@@ -25,7 +25,6 @@ model Client {
   balance      Float         @default(0)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-  feedbacks    Feedback[]
   jobs         Job[]
   transactions Transaction[]
 }
@@ -40,18 +39,19 @@ model Supplier {
   email     String?  @unique
   phone     String?
   vat       String?
-  product   String? // الحقل المطلوب لصفحة الموردين ✅
+  product   String? 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  transactions Transaction[]
 
   products Product[]
   jobs     Job[]
 }
 
-
+// 3. موديل المعاملات المالية
 model Transaction {
   id            Int      @id @default(autoincrement())
-  type          String // incoming, outgoing, petty_cash, raw_material, discount
+  type          String   // incoming, outgoing, petty_cash, raw_material, discount
   amount        Float
   currency      String   @default("USD")
   date          DateTime @default(now())
@@ -62,19 +62,26 @@ model Transaction {
   weightInTons  Float?
   packages      Int?
 
-  clientId Int?
-  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  // معرفات العلاقات الرقمية الصريحة لمنع كراشات التحويل
+  clientId      Int?
+  client        Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
-  relatedId   String?
-  relatedType String?
+  supplierId    Int?     // تم إضافته لدعم حسابات الموردين في الـ Ledgers بأمان
+  supplier      Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
-  jobId Int?
-  job   Job? @relation(fields: [jobId], references: [id])
+  jobId         Int?
+  job           Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // حقول حرة لدعم النظام القديم للفرونت إند بدون قيود صلبة
+  relatedId     String?
+  relatedType   String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([clientId])
+  @@index([supplierId])
+  @@index([jobId])
   @@index([type])
   @@map("transactions")
 }
@@ -102,7 +109,7 @@ model Product {
   @@index([category])
 }
 
-// 5. موديل العمليات (Jobs) - تم تعديل الحذف إلى SetNull للحماية
+// 5. موديل العمليات (Jobs) 
 model Job {
   id                     Int      @id @default(autoincrement())
   jobNumber              String   @unique
@@ -116,17 +123,16 @@ model Job {
   rawMaterialPricePerTon Float    @default(0)
   pettyCash              Float    @default(0)
   createdAt              DateTime @default(now())
-  todos                  Todo[]
 
   shippingRecords ShippingAgentRecord[]
   attachments     Json?
   packingLists    PackingList[]
   transactions    Transaction[]
+  shipmentOperations     ShipmentOperation[]
 
-  clientId   Int?
+  clientId    Int?
   supplierId Int?
 
-  // تم التعديل لـ SetNull لحماية البيانات من الحذف المفاجئ ✅
   client   Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
   supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
@@ -200,34 +206,34 @@ model Attachment {
 }
 
 model ShippingAgent {
-  id             Int      @id @default(autoincrement())
-  name           String
-  company        String?
-  address        String?
-  telephone      String?
-  personalNumber String?
-  email          String?  @unique
-  attachmentUrl  String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  name            String
+  company         String?
+  address         String?
+  telephone       String?
+  personalNumber  String?
+  email           String?  @unique
+  attachmentUrl   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   records ShippingAgentRecord[]
 }
 
 model ShippingAgentRecord {
-  id             Int      @id @default(autoincrement())
-  date           DateTime @default(now())
-  blNumber       String?
-  country        String?
+  id              Int      @id @default(autoincrement())
+  date            DateTime @default(now())
+  blNumber        String?
+  country         String?
   containerCount Int      @default(0)
-  costEgp        Float    @default(0)
-  costEgpNote    String?
-  costEuro       Float    @default(0)
-  costEuroNote   String?
-  costUsd        Float    @default(0)
-  costUsdNote    String?
-  pdfUrl         String?
-  createdAt      DateTime @default(now())
+  costEgp         Float    @default(0)
+  costEgpNote     String?
+  costEuro        Float    @default(0)
+  costEuroNote    String?
+  costUsd         Float    @default(0)
+  costUsdNote     String?
+  pdfUrl          String?
+  createdAt       DateTime @default(now())
 
   agentId Int
   agent   ShippingAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
@@ -300,7 +306,9 @@ model ShipmentOperation {
   id                    Int      @id @default(autoincrement())
   operationDate         DateTime
   loadingDate           DateTime
-  jobId                 Int?
+  jobDate               DateTime?
+  jobId                 Int?  
+  job                   Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull) // العلاقة مع جدول الـ Job
   clientName            String
   product               String?
   quantity              String?
@@ -324,12 +332,23 @@ model User {
   createdAt DateTime @default(now())
 }
 
+// تم تصحيح القيد لإنشاء حسابات متعددة لنفس البنك بعملات مختلفة ✅
 model BankBalance {
-  id        Int      @id @default(autoincrement())
-  bankName  String   @unique // اسم البنك (مثل: CIB, QNB)
-  currency  String   @default("USD")
-  amount    Float    @default(0) // رصيد البداية الافتتاحي
+  id       Int    @id @default(autoincrement())
+  bankName String 
+  currency String @default("USD")
+  amount   Float  @default(0) 
   updatedAt DateTime @updatedAt
+
+  @@unique([bankName, currency]) // الحماية المركبة الفريدة
 }
 
-
+// تم توحيد نوع حقل الـ jobId ليتوافق رقمياً مع جدول العمليات ✅
+model ArchiveFile {
+  id         String   @id @default(uuid())
+  name       String
+  type       String   
+  jobId      Int?     
+  url        String   @db.Text 
+  uploadedAt DateTime @default(now())
+}

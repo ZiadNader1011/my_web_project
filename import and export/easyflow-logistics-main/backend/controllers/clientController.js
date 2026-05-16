@@ -93,24 +93,34 @@ export const createClient = async (req, res) => {
     }
 };
 
-// 3. تعديل عميل (بذكاء: تحديث الحقول المرسلة فقط)
 export const updateClient = async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
 
+        // التصحيح وجدار الحماية: استخلاص الحقول الحقيقية المتواجدة في موديل بريسما فقط
         const updated = await prisma.client.update({
             where: { id: Number(id) },
             data: {
-                ...data,
-                // تأكيد تحويل الـ balance لرقم لو اتبعث في التعديل
+                name: data.name,
+                country: data.country,
+                company: data.company,
+                email: data.email,
+                phone: data.phone,
+                telephone: data.telephone,
+                fax: data.fax,
+                contact: data.contact,
+                address: data.address,
+                vat: data.vat,
+                agentName: data.agentName,
+                dhl: data.dhl,
                 balance: data.balance !== undefined ? parseFloat(data.balance) : undefined
             }
         });
 
         res.json({
             message: "Client updated successfully",
-            client: updated
+            client: { ...updated, id: String(updated.id) }
         });
     } catch (error) {
         console.error("Update Client Error:", error);

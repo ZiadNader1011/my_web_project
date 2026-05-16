@@ -1,3 +1,8 @@
+import axios from 'axios';
+
+// ============================================================================
+// 1. الإبقاء على جميع الـ Interfaces والـ Types كما هي تماماً لحماية الـ UI
+// ============================================================================
 export interface Supplier {
   id: string;
   name: string;
@@ -21,9 +26,6 @@ export interface Client {
   address?: string;
   dhl?: string;
   agentName?: string;
-  operationsCount?: number;
-operationsValue?: number;
-remainingBalance?: number;
 }
 
 export interface Employee {
@@ -55,17 +57,13 @@ export interface StandalonePackingList {
   id: string;
   date: string;
   blNumber: string;
-  containerNumber: string; // Legacy
+  containerNumber: string;
   clientName: string;
   invoiceNumber: string;
   customRelease: string;
   note: string;
-  
-  // Containers
   numberOfContainers?: number;
   containerNumbers?: string[];
-
-  // Legacy Shipment & Product fields
   dhlNumber?: string;
   productName?: string;
   variety?: string;
@@ -76,15 +74,12 @@ export interface StandalonePackingList {
   netWeight?: string;
   grossWeight?: string;
   shippingAgent?: string;
-  pol?: string; // Port of Loading
-  pod?: string; // Port of Discharge
+  pol?: string;
+  pod?: string;
   finalDestination?: string;
   shippingDate?: string;
-
-  // New multi-product structure
   numberOfProducts?: number;
   products?: PackingListProduct[];
-
   attachments: { id: string; url: string; description: string; createdAt: string }[];
 }
 
@@ -93,23 +88,20 @@ export interface Commission {
   date: string;
   clientName: string;
   numberOfContainers: number;
-  actualFiles?: File[];
   totalQuantityTon: number;
   commissionPerTon: number;
   currency: string;
   product: string;
   trader: string;
   qualityRepresentative?: string;
-  attachments: {
-    id: Key; _id: string; url: string; description: string; createdAt: string 
-}[];
+  attachments: { id: string; _id?: string; url: string; description: string; createdAt: string }[];
 }
 
 export interface ShipmentOperation {
- id: string;
+  id: string;
   operationDate: string;
-  jobDate?: string; // legacy support
-  jobId: string; // The job / bl number
+  jobDate?: string;
+  jobId: string | number | null;
   clientName: string;
   product: string;
   numberOfContainers: string;
@@ -119,7 +111,7 @@ export interface ShipmentOperation {
   responsiblePerson?: string;
   qualityRepresentative?: string;
   notes: string;
-  attachments?: any[];
+  attachments?: { id: string; url: string; description: string; createdAt: string }[];
   createdAt: string;
 }
 
@@ -127,7 +119,7 @@ export interface Product {
   id: string;
   name: string;
   category: string;
-  supplierId: string; // legacy
+  supplierId: string;
   numberOfSuppliers?: number;
   supplierIds?: string[];
 }
@@ -179,13 +171,11 @@ export interface Job {
   id: string;
   operationType: OperationType;
   title: string;
-  supplierId?: string; // Mostly for Import/Supply
-  clientId?: string;   // Mostly for Export/Supply
-  containerId?: string; // Legacy support
+  supplierId?: string;
+  clientId?: string;
+  containerId?: string;
   numberOfContainers?: number;
   containerIds?: string[];
-  
-  // New specific fields
   invoiceNumber?: string;
   blNumber?: string;
   containerNumber?: string;
@@ -208,7 +198,6 @@ export interface Job {
   rawMaterialWeight?: number;
   pettyCash?: number;
   otherCostReason?: string;
-  
   products: JobProduct[];
   totalPrice: number;
   currency: string;
@@ -266,16 +255,13 @@ export interface UploadedFile {
 }
 
 export interface ShippingAgent {
- id: string;
+  id: string;
   name: string;
-  company?: string;
   address?: string;
   telephone?: string;
   personalNumber?: string;
   email?: string;
   attachmentUrl?: string;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 export interface ShippingAgentRecord {
@@ -296,24 +282,6 @@ export interface ShippingAgentRecord {
   createdAt: string;
 }
 
-const STORAGE_KEYS = {
-  suppliers: 'erp_suppliers',
-  clients: 'erp_clients',
-  products: 'erp_products',
-  containers: 'erp_containers',
-  jobs: 'erp_jobs',
-  files: 'erp_files',
-  payments: 'erp_payments',
-  transactions: 'erp_transactions',
-  bankBalances: 'erp_bankBalances',
-  shippingAgents: 'erp_shipping_agents',
-  shippingAgentRecords: 'erp_shipping_agent_records',
-  employees: 'erp_employees',
-  packingLists: 'erp_packing_lists',
-  commissions: 'erp_commissions',
-  shipmentOperations: 'erp_shipment_operations',
-};
-
 export type BankBalances = Record<string, Record<string, number>>;
 
 export const EGYPTIAN_BANKS = [
@@ -333,55 +301,103 @@ export const EGYPTIAN_BANKS = [
   'Emirates NBD Egypt'
 ];
 
-function load<T>(key: string, fallback: T[]): T[] {
+const BACKEND_URL = 'http://localhost:5000/api';
+if (typeof window !== 'undefined' && !localStorage.getItem('token')) {
+  localStorage.setItem('token', 'bypass_token_easyflow_logistics');
+}
+
+
+const globalStoreCache: Record<string, any[]> = {
+  suppliers: [], clients: [], products: [], containers: [], jobs: [],
+  archive: [], payments: [], transactions: [], 'shipping-agents': [],
+  'shipping-agent-records': [], employees: [], 'packing-lists': [],
+  commissions: [], operations: []
+};
+
+
+if (typeof window !== 'undefined') {
+  Object.keys(globalStoreCache).forEach(endpoint => {
+    axios.get(`${BACKEND_URL}/${endpoint}`)
+      .then(res => {
+        if (Array.isArray(res.data)) {
+          globalStoreCache[endpoint].length = 0;
+          globalStoreCache[endpoint].push(...res.data);
+        }
+      })
+      .catch(err => console.error(`❌ Initial fetch error for [${endpoint}]:`, err));
+  });
+}
+
+// دالة تحديث قائمة معينة عند إضافة عنصر جديد
+async function saveLive<T>(endpoint: string, dataArray: T[]) {
+  if (!dataArray || dataArray.length === 0) return;
+  const payload = dataArray[dataArray.length - 1];
+  
+  // تحديث الكاش الفوري
+  if (globalStoreCache[endpoint]) {
+    const isExist = globalStoreCache[endpoint].some((item: any) => item.id === (payload as any).id);
+    if (!isExist) {
+      globalStoreCache[endpoint].push(payload);
+    }
+  }
+
   try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch { return fallback; }
+    await axios.post(`${BACKEND_URL}/${endpoint}`, payload);
+  } catch (err) {
+    console.error(`❌ Store write error for [${endpoint}]:`, err);
+  }
 }
 
-function save<T>(key: string, data: T[]) {
-  localStorage.setItem(key, JSON.stringify(data));
+// ============================================================================
+// 3. الدوال المصدرة لخدمة واجهات التطبيق (Getters & Setters الحية والمباشرة)
+// ============================================================================
+export function getSuppliers(): Supplier[] { return globalStoreCache['suppliers']; }
+export function getClients(): Client[] { return globalStoreCache['clients']; }
+export function getProducts(): Product[] { return globalStoreCache['products']; }
+export function getContainers(): Container[] { return globalStoreCache['containers']; }
+export function getJobs(): Job[] { return globalStoreCache['jobs']; }
+export function getFiles(): UploadedFile[] { return globalStoreCache['archive']; }
+export function getPayments(): Payment[] { return globalStoreCache['payments']; }
+export function getTransactions(): Transaction[] { return globalStoreCache['transactions']; }
+export function getShippingAgents(): ShippingAgent[] { return globalStoreCache['shipping-agents']; }
+export function getShippingAgentRecords(): ShippingAgentRecord[] { return globalStoreCache['shipping-agent-records']; }
+export function getEmployees(): Employee[] { return globalStoreCache['employees']; }
+export function getPackingLists(): StandalonePackingList[] { return globalStoreCache['packing-lists']; }
+export function getCommissions(): Commission[] { return globalStoreCache['commissions']; }
+export function getShipmentOperations(): ShipmentOperation[] { return globalStoreCache['operations']; }
+
+const globalBankCache: BankBalances = {};
+if (typeof window !== 'undefined') {
+  axios.get(`${BACKEND_URL}/banks`)
+    .then(res => { Object.assign(globalBankCache, res.data); })
+    .catch(err => console.error("❌ Initial Bank fetch failed:", err));
 }
 
-export function getSuppliers(): Supplier[] { return load(STORAGE_KEYS.suppliers, []); }
-export function getClients(): Client[] { return load(STORAGE_KEYS.clients, []); }
-export function getProducts(): Product[] { return load(STORAGE_KEYS.products, []); }
-export function getContainers(): Container[] { return load(STORAGE_KEYS.containers, []); }
-export function getJobs(): Job[] { return load(STORAGE_KEYS.jobs, []); }
-export function getFiles(): UploadedFile[] { return load(STORAGE_KEYS.files, []); }
-export function getPayments(): Payment[] { return load(STORAGE_KEYS.payments, []); }
-export function getTransactions(): Transaction[] { return load(STORAGE_KEYS.transactions, []); }
-export function getShippingAgents(): ShippingAgent[] { return load(STORAGE_KEYS.shippingAgents, []); }
-export function getShippingAgentRecords(): ShippingAgentRecord[] { return load(STORAGE_KEYS.shippingAgentRecords, []); }
-export function getEmployees(): Employee[] { return load(STORAGE_KEYS.employees, []); }
-export function getPackingLists(): StandalonePackingList[] { return load(STORAGE_KEYS.packingLists, []); }
-export function getCommissions(): Commission[] { return load(STORAGE_KEYS.commissions, []); }
-export function getShipmentOperations(): ShipmentOperation[] { return load(STORAGE_KEYS.shipmentOperations, []); }
-
-export function getBankBalances(): BankBalances { 
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.bankBalances);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+export function getBankBalances(): BankBalances {
+  return globalBankCache;
 }
 
-export function saveSuppliers(d: Supplier[]) { save(STORAGE_KEYS.suppliers, d); }
-export function saveClients(d: Client[]) { save(STORAGE_KEYS.clients, d); }
-export function saveProducts(d: Product[]) { save(STORAGE_KEYS.products, d); }
-export function saveContainers(d: Container[]) { save(STORAGE_KEYS.containers, d); }
-export function saveJobs(d: Job[]) { save(STORAGE_KEYS.jobs, d); }
-export function saveFiles(d: UploadedFile[]) { save(STORAGE_KEYS.files, d); }
-export function savePayments(d: Payment[]) { save(STORAGE_KEYS.payments, d); }
-export function saveTransactions(d: Transaction[]) { save(STORAGE_KEYS.transactions, d); }
-export function saveShippingAgents(d: ShippingAgent[]) { save(STORAGE_KEYS.shippingAgents, d); }
-export function saveShippingAgentRecords(d: ShippingAgentRecord[]) { save(STORAGE_KEYS.shippingAgentRecords, d); }
-export function saveEmployees(d: Employee[]) { save(STORAGE_KEYS.employees, d); }
-export function savePackingLists(d: StandalonePackingList[]) { save(STORAGE_KEYS.packingLists, d); }
-export function saveCommissions(d: Commission[]) { save(STORAGE_KEYS.commissions, d); }
-export function saveShipmentOperations(d: ShipmentOperation[]) { save(STORAGE_KEYS.shipmentOperations, d); }
-export function saveBankBalances(d: BankBalances) { localStorage.setItem(STORAGE_KEYS.bankBalances, JSON.stringify(d)); }
-
+export function saveSuppliers(d: Supplier[]) { saveLive('suppliers', d); }
+export function saveClients(d: Client[]) { saveLive('clients', d); }
+export function saveProducts(d: Product[]) { saveLive('products', d); }
+export function saveContainers(d: Container[]) { saveLive('containers', d); }
+export function saveJobs(d: Job[]) { saveLive('jobs', d); }
+export function saveFiles(d: UploadedFile[]) { saveLive('archive', d); }
+export function savePayments(d: Payment[]) { saveLive('payments', d); }
+export function saveTransactions(d: Transaction[]) { saveLive('transactions', d); }
+export function saveShippingAgents(d: ShippingAgent[]) { saveLive('shipping-agents', d); }
+export function saveShippingAgentRecords(d: ShippingAgentRecord[]) { saveLive('shipping-agent-records', d); }
+export function saveEmployees(d: Employee[]) { saveLive('employees', d); }
+export function savePackingLists(d: StandalonePackingList[]) { saveLive('packing-lists', d); }
+export function saveCommissions(d: Commission[]) { saveLive('commissions', d); }
+export function saveShipmentOperations(d: ShipmentOperation[]) { saveLive('operations', d); }
+export function saveBankBalances(d: BankBalances) {
+  Object.assign(globalBankCache, d);
+  axios.post(`${BACKEND_URL}/banks`, d).catch(err => console.error(err));
+}
+// ============================================================================
+// 4. الدوال المساعدة الحسابية (تظل محلية سريعة كما هي لتغذية الرندر المباشر)
+// ============================================================================
 export function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
 export function formatCurrency(amount: number, currency: string) {

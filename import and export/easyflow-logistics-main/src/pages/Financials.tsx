@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/PageHeader';
 import { StatCard } from '@/components/StatCard';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import {
-  formatCurrency, formatDate    ,EGYPTIAN_BANKS
+  getTransactions, saveTransactions, getSuppliers, getJobs, getClients, getContainers, getShippingAgents, getEmployees,
+  generateId, Transaction, formatCurrency, formatDate, EGYPTIAN_BANKS
 } from '@/data/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,52 +15,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { toast } from 'sonner';
-import axios from 'axios';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Plus,
-  Trash2,
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  Book,
-  Calendar,
-  Pencil,
-  Loader2
+  Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Book, Calendar, Pencil
 } from 'lucide-react';
-import type { Transaction } from '@/data/store';
-
-
-
+import { toast } from 'sonner';
 
 export default function Financials() {
-const queryClient = useQueryClient();
-const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [filterEntityId, setFilterEntityId] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // 2. جلب البيانات من السيرفر (Server-side Filtering)
-  const { data: transactions = [], isLoading } = useQuery({
-    queryKey: ['transactions', filterCategory, filterEntityId],
-    queryFn: async () => {
-      const res = await axios.get('http://localhost:5000/api/transactions', {
-        params: { 
-          category: filterCategory, 
-          entityId: filterEntityId === 'all' ? undefined : filterEntityId 
-        }
-      });
-      return res.data;
-    }
-  });
-
   const { t } = useTranslation();
-const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: async () => (await axios.get('http://localhost:5000/api/suppliers')).data });
-  const { data: clients = [] } = useQuery({ queryKey: ['clients'], queryFn: async () => (await axios.get('http://localhost:5000/api/clients')).data });
-  const { data: jobs = [] } = useQuery({ queryKey: ['jobs'], queryFn: async () => (await axios.get('http://localhost:5000/api/jobs')).data });
-  const { data: shippingAgents = [] } = useQuery({ queryKey: ['shippingAgents'], queryFn: async () => (await axios.get('http://localhost:5000/api/shipping-agents')).data });
-  const { data: employees = [] } = useQuery({ queryKey: ['employees'], queryFn: async () => (await axios.get('http://localhost:5000/api/employees')).data });
-  const { data: containers = [] } = useQuery({ queryKey: ['containers'], queryFn: async () => (await axios.get('http://localhost:5000/api/containers')).data });
+  const [transactions, setTransactions] = useState<Transaction[]>(getTransactions);
+  const suppliers = useMemo(() => getSuppliers(), []);
+  const clients = useMemo(() => getClients(), []);
+  const jobs = useMemo(() => getJobs(), []);
+  const containers = useMemo(() => getContainers(), []);
+  const shippingAgents = useMemo(() => getShippingAgents(), []);
+  const employees = useMemo(() => getEmployees(), []);
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -80,16 +49,20 @@ const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: as
     packages: undefined as number | undefined
   };
   const [form, setForm] = useState(emptyForm);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterEntityId, setFilterEntityId] = useState<string>('all');
 
-const sumByCurrency = (type: string) => {
-  const subset = transactions.filter((t: any) => t.type === type);
-  const obj: Record<string, number> = subset.reduce((acc: any, t: any) => {
-    acc[t.currency] = (acc[t.currency] || 0) + Number(t.amount);
-    return acc;
-  }, {}); 
-  const parts = Object.entries(obj).map(([cur, val]) => formatCurrency(val as number, cur));
-  return parts.length ? parts.join(' | ') : '0';
-};
+  const visibleTransactions = useMemo(() => {
+    return transactions;
+  }, [transactions]);
+
+  const sumByCurrency = (type: string) => {
+    const subset = visibleTransactions.filter(t => t.type === type);
+    const obj = subset.reduce((acc, t) => { acc[t.currency] = (acc[t.currency] || 0) + t.amount; return acc; }, {} as Record<string, number>);
+    const parts = Object.entries(obj).map(([cur, val]) => formatCurrency(val, cur));
+    return parts.length ? parts.join(' | ') : '0';
+  };
 
   const incomingTotalStr = sumByCurrency('incoming');
   const outgoingTotalStr = sumByCurrency('outgoing');
@@ -106,10 +79,10 @@ const sumByCurrency = (type: string) => {
     setEditing(t);
     setForm({
       type: t.type,
-      relatedId: t.relatedId ? String(t.relatedId) : 'none',
-      amount: Number(t.amount).toString(),
+      relatedId: t.relatedId || 'none',
+      amount: t.amount.toString(),
       currency: t.currency,
-      date: t.date ? new Date(t.date).toISOString().split('T')[0] : '',
+      date: t.date,
       description: t.description,
       bank: t.bank || '',
       blNumber: t.blNumber || '',
@@ -120,70 +93,51 @@ const sumByCurrency = (type: string) => {
     setEditOpen(true);
   };
 
-const handleSave = async () => {
-  if (!form.amount || parseFloat(form.amount) <= 0) { toast.error('Please enter a valid amount.'); return; }
-  
-  const payload = {
-    ...form,
-    amount: parseFloat(form.amount),
-    relatedId: form.relatedId === 'none' ? null : form.relatedId,
-    date: new Date(form.date).toISOString()
-  };
+  const handleSave = () => {
+    if (!form.amount || parseFloat(form.amount) <= 0) { toast.error('Please enter a valid amount.'); return; }
+    if (!form.date) { toast.error('Please enter a date.'); return; }
+    if (!form.description) { toast.error('Please enter a description.'); return; }
 
-  try {
+    const tx: Transaction = {
+      id: editing ? editing.id : generateId(),
+      relatedId: form.relatedId === 'none' ? undefined : form.relatedId,
+      type: form.type,
+      amount: parseFloat(form.amount),
+      currency: form.currency,
+      date: form.date,
+      description: form.description,
+      bank: form.bank || undefined,
+      blNumber: form.blNumber || undefined,
+      invoiceNumber: form.invoiceNumber || undefined,
+      weightInTons: form.weightInTons,
+      packages: form.packages,
+      createdAt: editing ? editing.createdAt : new Date().toISOString(),
+    };
+    
+    let updated: Transaction[];
     if (editing) {
-      await axios.put(`http://localhost:5000/api/transactions/${editing.id}`, payload);
-      toast.success('Transaction updated successfully!');
+      updated = transactions.map(t => t.id === editing.id ? tx : t);
+      toast.success('Transaction updated successfully! ✏️');
     } else {
-      await axios.post('http://localhost:5000/api/transactions', payload);
-      toast.success('Transaction recorded successfully!');
+      updated = [...transactions, tx];
+      toast.success('Transaction recorded successfully! 💰');
     }
     
-    queryClient.invalidateQueries({ queryKey: ['transactions'] });
+    setTransactions(updated);
+    saveTransactions(updated);
     setEditOpen(false);
-} catch (error: any) {
-  toast.error(error.response?.data?.message || 'Save failed');
-}
-};
+  };
 
-const handleDelete = async () => {
-  if (!deleting) return;
-
-  // خدي نسخة من الـ ID عشان نضمن استخدامه صح
-  const targetId = deleting.id;
-
-  try {
-    // 1. ابعتي طلب الحذف للسيرفر
-    await axios.delete(`http://localhost:5000/api/transactions/${targetId}`);
-
-    // 2. اقفلي المودال وصفرّي الـ State فوراً (قبل الـ Toast والـ Invalidate)
-    // ده بيمنع أي Double Click أو محاولة إعادة رسم للعنصر الممسوح
-    setDeleteOpen(false);
+  const handleDelete = useCallback(() => {
+    if (!deleting) return;
+    const updated = transactions.filter(p => p.id !== deleting.id);
+    setTransactions(updated);
+    saveTransactions(updated);
+    toast.success('Record removed.');
     setDeleting(null);
+  }, [deleting, transactions]);
 
-    // 3. ظهري رسالة النجاح
-    toast.success('Record removed successfully.');
-
-    // 4. حديثي البيانات في الجدول
-    queryClient.invalidateQueries({ queryKey: ['transactions'] });
-
-  } catch (error) {
-    console.error("❌ Delete Error:", error);
-
-    // في حالة الخطأ، اقفلي المودال برضه عشان ميفضلش معلق
-    setDeleteOpen(false);
-
-    // لو السيرفر رد بـ 404 (يعني اتمسح فعلاً)، اعتبريه نجاح
-    if (error.response?.status === 404) {
-      setDeleting(null);
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      return;
-    }
-
-    toast.error('Delete failed');
-  }
-};
-
+  // Build a list of all linkable entities
   const linkableEntities = [
     { label: '--- Jobs ---', isLabel: true, value: 'label-jobs' },
     ...jobs.map(j => ({ label: `Job: ${j.title}`, value: j.id })),
@@ -209,6 +163,7 @@ const handleDelete = async () => {
     if (a) return `Agent: ${a.name}`;
     const e = employees.find(x => x.id === id);
     if (e) return `Employee: ${e.name}`;
+    if (e) return `Employee: ${e.name}`;
     return null;
   };
 
@@ -229,142 +184,80 @@ const handleDelete = async () => {
     setFilterEntityId('all');
   };
 
-const filteredTransactions = useMemo(() => {
-  if (!searchTerm) {
-    return [...transactions].sort(
-      (a, b) =>
-        new Date(b.date).getTime() -
-        new Date(a.date).getTime()
-    );
-  }
+  const filteredTransactions = visibleTransactions
+    .filter(t => {
+      // 1. Entity Filter Logic
+      if (filterCategory !== 'all' && filterEntityId !== 'all') {
+        const j = jobs.find(x => x.id === t.relatedId);
+        
+        if (filterCategory === 'jobs') {
+          if (t.relatedId !== filterEntityId) return false;
+        } else if (filterCategory === 'clients') {
+          const directMatch = t.relatedId === filterEntityId;
+          const jobMatch = j && j.clientId === filterEntityId;
+          if (!directMatch && !jobMatch) return false;
+        } else if (filterCategory === 'suppliers') {
+          const directMatch = t.relatedId === filterEntityId;
+          const jobMatch = j && j.supplierId === filterEntityId;
+          if (!directMatch && !jobMatch) return false;
+        } else if (filterCategory === 'agents') {
+          if (t.relatedId !== filterEntityId) return false;
+        } else if (filterCategory === 'employees') {
+          if (t.relatedId !== filterEntityId) return false;
+        }
+      }
 
-  const q = searchTerm.toLowerCase();
-
-  return transactions
-    .filter((t: any) => {
-      const related =
-        getRelatedEntityName(t.relatedId)?.toLowerCase() || '';
-
+      // 2. Search Term Logic
+      if (!searchTerm) return true;
+      const q = searchTerm.toLowerCase();
+      const related = getRelatedEntityName(t.relatedId) || '';
       const formattedDate = formatDate(t.date) || '';
-
+      
       const normalizedDate = formattedDate.replace(/[\-\.\s]+/g, '/');
-
       const normalizedQuery = q.replace(/[\-\.\s]+/g, '/');
-
-      const dateStringMatch =
-        normalizedQuery.length > 0 &&
-        normalizedDate.includes(normalizedQuery);
-
+      const dateStringMatch = normalizedQuery.length > 0 && normalizedDate.includes(normalizedQuery);
+      
       const rawDateStr = formattedDate.replace(/[^0-9]/g, '');
-
       const rawQueryStr = q.replace(/[^0-9]/g, '');
+      const numericMatch = rawQueryStr.length > 0 && (rawDateStr.includes(rawQueryStr) || t.date.replace(/[^0-9]/g, '').includes(rawQueryStr));
 
-      const numericMatch =
-        rawQueryStr.length > 0 &&
-        rawDateStr.includes(rawQueryStr);
+      const directInvoiceSearch = t.invoiceNumber ? t.invoiceNumber.toLowerCase() : '';
+      const j = jobs.find(x => x.id === t.relatedId);
+      const invoiceSearch = j && j.invoiceNumber ? j.invoiceNumber.toLowerCase() : '';
+      const blSearch = j && j.blNumber ? j.blNumber.toLowerCase() : '';
+      const directBlSearch = t.blNumber ? t.blNumber.toLowerCase() : '';
+      const c = j && j.containerId ? containers.find(cont => cont.id === j.containerId) : null;
+      const containerSearch = c ? c.containerNumber.toLowerCase() : '';
+      
+      const supplierSearch = j && j.supplierId ? suppliers.find(x => x.id === j.supplierId)?.name.toLowerCase() || '' : '';
+      const clientSearch = j && j.clientId ? clients.find(x => x.id === j.clientId)?.name.toLowerCase() || '' : '';
+      const bankSearch = t.bank ? t.bank.toLowerCase() : '';
+      const directSupplierSearch = suppliers.find(x => x.id === t.relatedId)?.name.toLowerCase() || '';
+      const directClientSearch = clients.find(x => x.id === t.relatedId)?.name.toLowerCase() || '';
+      const agentSearch = shippingAgents.find(x => x.id === t.relatedId)?.name.toLowerCase() || '';
+      const employeeSearch = employees.find(x => x.id === t.relatedId)?.name.toLowerCase() || '';
 
-      const directInvoiceSearch =
-        t.invoiceNumber?.toLowerCase() || '';
-
-      const directBlSearch =
-        t.blNumber?.toLowerCase() || '';
-
-      const bankSearch =
-        t.bank?.toLowerCase() || '';
-
-      const j = jobs.find((x: any) => x.id === t.relatedId);
-
-      const invoiceSearch =
-        j?.invoiceNumber?.toLowerCase() || '';
-
-      const blSearch =
-        j?.blNumber?.toLowerCase() || '';
-
-      const c =
-        j?.containerId
-          ? containers.find(
-              (cont: any) =>
-                cont.id === j.containerId
-            )
-          : null;
-
-      const containerSearch =
-        c?.containerNumber?.toLowerCase() || '';
-
-      const supplierSearch =
-        suppliers.find(
-          (x: any) => x.id === j?.supplierId
-        )?.name?.toLowerCase() || '';
-
-      const clientSearch =
-        clients.find(
-          (x: any) => x.id === j?.clientId
-        )?.name?.toLowerCase() || '';
-
-      const directSupplierSearch =
-        suppliers.find(
-          (x: any) => x.id === t.relatedId
-        )?.name?.toLowerCase() || '';
-
-      const directClientSearch =
-        clients.find(
-          (x: any) => x.id === t.relatedId
-        )?.name?.toLowerCase() || '';
-
-      const agentSearch =
-        shippingAgents.find(
-          (x: any) => x.id === t.relatedId
-        )?.name?.toLowerCase() || '';
-
-      const employeeSearch =
-        employees.find(
-          (x: any) => x.id === t.relatedId
-        )?.name?.toLowerCase() || '';
-
-      return (
-        t.description?.toLowerCase().includes(q) ||
-        t.type?.replace('_', ' ').toLowerCase().includes(q) ||
-        related.includes(q) ||
-        formattedDate.toLowerCase().includes(q) ||
-        dateStringMatch ||
-        numericMatch ||
-        t.amount?.toString().includes(q) ||
-        directInvoiceSearch.includes(q) ||
-        invoiceSearch.includes(q) ||
-        directBlSearch.includes(q) ||
-        blSearch.includes(q) ||
-        containerSearch.includes(q) ||
-        bankSearch.includes(q) ||
-        supplierSearch.includes(q) ||
-        clientSearch.includes(q) ||
-        directSupplierSearch.includes(q) ||
-        directClientSearch.includes(q) ||
-        agentSearch.includes(q) ||
-        employeeSearch.includes(q)
-      );
+      return t.description.toLowerCase().includes(q) || 
+             t.type.replace('_', ' ').toLowerCase().includes(q) ||
+             related.toLowerCase().includes(q) ||
+             formattedDate.includes(q) ||
+             dateStringMatch ||
+             numericMatch ||
+             t.amount.toString().includes(q) ||
+             directInvoiceSearch.includes(q) ||
+             invoiceSearch.includes(q) ||
+             directBlSearch.includes(q) ||
+             blSearch.includes(q) ||
+             containerSearch.includes(q) ||
+             bankSearch.includes(q) ||
+             supplierSearch.includes(q) ||
+             clientSearch.includes(q) ||
+             directSupplierSearch.includes(q) ||
+             directClientSearch.includes(q) ||
+             agentSearch.includes(q) ||
+             employeeSearch.includes(q);
     })
-    .sort(
-      (a: any, b: any) =>
-        new Date(b.date).getTime() -
-        new Date(a.date).getTime()
-    );
-}, [
-  transactions,
-  searchTerm,
-  jobs,
-  containers,
-  suppliers,
-  clients,
-  shippingAgents,
-  employees
-]);
-
-
-    if (isLoading) return (
-  <div className="flex h-96 items-center justify-center">
-    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-  </div>
-);
+    .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <div>
@@ -436,7 +329,7 @@ const filteredTransactions = useMemo(() => {
             {filteredTransactions.length === 0 ? (
               <tr><td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">No records match your search.</td></tr>
             ) : (
-              filteredTransactions.map((t: any) => (
+              filteredTransactions.map(t => (
                 <tr key={t.id} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
                   <td className="px-4 py-4 whitespace-nowrap"><Calendar className="h-3 w-3 inline mr-1 text-muted-foreground"/> {formatDate(t.date)}</td>
                   <td className="px-4 py-4"><Badge variant="outline">{t.type.replace('_', ' ')}</Badge></td>

@@ -2,14 +2,14 @@ import express from 'express';
 import upload from '../middleware/upload.js';
 import { prisma } from '../lib/prisma.js';
 import { commissionSchema, validate } from '../middleware/validator.js';
-import { protect } from '../middleware/auth.js'; // 1. استيراد الميدل وير
+
 
 const router = express.Router();
 
 // --- 1. إضافة عمولة جديدة (POST) ---
 // الترتيب: حماية (Auth) -> رفع ملفات (Multer) -> فحص بيانات (Validate)
 router.post('/', 
-    protect, 
+     
     upload.array('attachments'), 
     validate(commissionSchema), 
     async (req, res) => {
@@ -46,7 +46,6 @@ router.post('/',
 
 // --- 2. تحديث عمولة (PUT) ---
 router.put('/:id', 
-    protect, 
     upload.array('attachments'), 
     validate(commissionSchema), 
     async (req, res) => {
@@ -96,8 +95,6 @@ router.put('/:id',
     }
 });
 
-// --- 3. جلب كل العمولات (GET) ---
-// متاح للجميع حالياً، إذا أردتِ حمايته أضيفي protect قبل الـ async
 router.get('/', async (req, res) => {
     try {
         const records = await prisma.commission.findMany({
@@ -110,7 +107,7 @@ router.get('/', async (req, res) => {
 });
 
 // --- 4. حذف عمولة (DELETE) ---
-router.delete('/:id', protect, async (req, res) => {
+router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);

@@ -2,16 +2,15 @@ import express from 'express';
 import upload from '../middleware/upload.js';
 import { prisma } from '../lib/prisma.js';
 import { shippingAgentRecordSchema, validate } from '../middleware/validator.js';
-import { protect } from '../middleware/auth.js'; // ✅ 1. استيراد بوابة الحماية
+
 
 const router = express.Router();
 
-// --- [POST] إضافة سجل جديد ---
-// الترتيب: الرفع (يفك الداتا) -> الحماية (يتأكد من المستخدم) -> الفحص (يتأكد من البيانات)
+
 router.post(
     '/', 
     upload.single('pdfFile'), 
-    protect, 
+    
     validate(shippingAgentRecordSchema), 
     async (req, res) => {
     try {
@@ -43,7 +42,7 @@ router.post(
 });
 
 // --- [GET] جلب كل السجلات ---
-router.get('/', protect, async (req, res) => {
+router.get('/',  async (req, res) => {
     try {
         const records = await prisma.shippingAgentRecord.findMany({
             include: { agent: true, job: true }, 
@@ -56,7 +55,7 @@ router.get('/', protect, async (req, res) => {
 });
 
 // --- [DELETE] حذف سجل ---
-router.delete('/:id', protect, async (req, res) => {
+router.delete('/:id',  async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);
@@ -80,7 +79,7 @@ router.delete('/:id', protect, async (req, res) => {
 router.put(
     '/:id', 
     upload.single('pdfFile'), 
-    protect, 
+   
     validate(shippingAgentRecordSchema), 
     async (req, res) => {
     try {

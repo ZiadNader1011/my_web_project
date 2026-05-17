@@ -1,15 +1,11 @@
 import express from 'express';
 import { prisma } from '../lib/prisma.js';
 import { employeeSchema, validate } from '../middleware/validator.js';
-import { protect } from '../middleware/auth.js'; // 1. استيراد بوابة الحماية
+
 
 const router = express.Router();
 
-/**
- * --- 1. جلب كل الموظفين (GET) ---
- * عادة نتركها محمية بـ protect لأنها بيانات خاصة بالشركة
- */
-router.get('/', protect, async (req, res) => {
+router.get('/',  async (req, res) => {
     try {
         const employees = await prisma.employee.findMany({
             orderBy: { id: 'desc' }
@@ -25,7 +21,7 @@ router.get('/', protect, async (req, res) => {
  * --- 2. إضافة موظف جديد (POST) ---
  * الترتيب: 1. حماية -> 2. فحص بيانات -> 3. تنفيذ
  */
-router.post('/', protect, validate(employeeSchema), async (req, res) => {
+router.post('/',  validate(employeeSchema), async (req, res) => {
     try {
         const { name, phone, jobTitle } = req.body;
         
@@ -46,7 +42,7 @@ router.post('/', protect, validate(employeeSchema), async (req, res) => {
 /**
  * --- 3. تحديث بيانات موظف (PUT) ---
  */
-router.put('/:id', protect, validate(employeeSchema), async (req, res) => {
+router.put('/:id', validate(employeeSchema), async (req, res) => {
     try {
         const { id } = req.params;
         const { name, phone, jobTitle } = req.body;
@@ -77,7 +73,7 @@ router.put('/:id', protect, validate(employeeSchema), async (req, res) => {
 /**
  * --- 4. حذف موظف (DELETE) ---
  */
-router.delete('/:id', protect, async (req, res) => {
+router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);

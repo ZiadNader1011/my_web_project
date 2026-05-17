@@ -28,9 +28,11 @@ import commissionRoutes from './routes/commissionRoutes.js';
 import operationRoutes from './routes/operationRoutes.js';
 import financialRoutes from './routes/financialRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import bankRoutes from './routes/bankRoutes.js';
 
 import morgan from 'morgan';
-import bankRoutes from './routes/bankRoutes.js';
+
 
 
 const app = express();
@@ -84,6 +86,8 @@ app.use('/api/operations', operationRoutes);
 app.use('/api/transactions', financialRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/banks', bankRoutes);
+app.use('/api/payments', paymentRoutes);
+
 
 // 4. مسار الرفع المباشر
 app.post('/api/upload', upload.single('file'), (req, res) => {

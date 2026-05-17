@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { StatCard } from '@/components/StatCard';
 import { getJobs, getSuppliers, getContainers, getProducts, getTransactions, getFiles, getClients, getShippingAgents, getShippingAgentRecords, formatCurrency, sumByCurrency, computeBalances, formatBalanceObj } from '@/data/store';
@@ -24,19 +24,38 @@ const statusColors: Record<string, string> = {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
-  const jobs = useMemo(() => getJobs(), []);
-  const suppliers = useMemo(() => getSuppliers(), []);
-  const containers = useMemo(() => getContainers(), []);
-  const products = useMemo(() => getProducts(), []);
-  const transactions = useMemo(() => getTransactions(), []);
-  const files = useMemo(() => getFiles(), []);
+
+  // ⚡ العداد السحري الصامت: يجبر الـ useMemo على إعادة الحساب بعد التحميل الخلفي مباشرة
+  const [trigger, setTrigger] = useState(0);
+
+  useEffect(() => {
+    // تحديث خفيف جداً بعد 400 ملي ثانية لضمان قراءة الداتا فور تحميل الكاش الخلفي
+    const timer = setTimeout(() => {
+      setTrigger(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 🚀 ربط الـ useMemo بالـ trigger يضمن تحديث الأرقام تلقائياً وبشكل صامت بدون وميض أو تصفير معلق
+  const jobs = useMemo(() => getJobs(), [trigger]);
+  const suppliers = useMemo(() => getSuppliers(), [trigger]);
+  const containers = useMemo(() => getContainers(), [trigger]);
+  const products = useMemo(() => getProducts(), [trigger]);
+  const transactions = useMemo(() => getTransactions(), [trigger]);
+  const files = useMemo(() => getFiles(), [trigger]);
 
   const dateLocale = i18n.language === 'ar' ? ar : enUS;
-  const formatDate = (dateStr: string) => formatDistanceToNow(new Date(dateStr), { addSuffix: true, locale: dateLocale });
+  const formatDate = (dateStr: string) => {
+    try {
+      return formatDistanceToNow(new Date(dateStr), { addSuffix: true, locale: dateLocale });
+    } catch {
+      return '—';
+    }
+  };
 
-  const clients = useMemo(() => getClients(), []);
-  const shippingAgents = useMemo(() => getShippingAgents(), []);
-  const agentRecords = useMemo(() => getShippingAgentRecords(), []);
+  const clients = useMemo(() => getClients(), [trigger]);
+  const shippingAgents = useMemo(() => getShippingAgents(), [trigger]);
+  const agentRecords = useMemo(() => getShippingAgentRecords(), [trigger]);
 
   const totalSalesObj: Record<string, number> = {};
   const totalSupplierCostObj: Record<string, number> = {};
@@ -50,12 +69,11 @@ export default function Dashboard() {
 
   // 1. Base Jobs processing
   jobs.forEach(j => {
-    // Sales
-    const hasValidProducts = j.products && j.products.some(p => (Number(p.quantity) || 0) > 0 && (Number(p.unitPrice) || 0) > 0);
+    const hasValidProducts = j.products && j.products.some((p: any) => (Number(p.quantity) || 0) > 0 && (Number(p.unitPrice) || 0) > 0);
     const discount = j.discountPercentage || 0;
     
     if (hasValidProducts) {
-      j.products.forEach(p => {
+      j.products.forEach((p: any) => {
         const c = p.currency || j.currency;
         const gross = (Number(p.quantity) || 0) * (Number(p.unitPrice) || 0);
         totalSalesObj[c] = (totalSalesObj[c] || 0) + (gross * (1 - discount / 100));
@@ -64,7 +82,6 @@ export default function Dashboard() {
       totalSalesObj[j.currency] = (totalSalesObj[j.currency] || 0) + (j.totalPrice * (1 - discount / 100));
     }
 
-    // Supplier Costs
     const grossCost = j.rawMaterialCost || ((Number(j.rawMaterialWeight) || 0) * (Number(j.rawMaterialPricePerTon) || 0));
     const suppDisc = j.supplierDiscountPercentage || 0;
     const netCost = grossCost - (grossCost * (suppDisc / 100));
@@ -104,11 +121,11 @@ export default function Dashboard() {
     });
 
     clientJobs.forEach(job => {
-      const hasValidProducts = job.products && job.products.some(p => (Number(p.quantity) || 0) > 0 && (Number(p.unitPrice) || 0) > 0);
+      const hasValidProducts = job.products && job.products.some((p: any) => (Number(p.quantity) || 0) > 0 && (Number(p.unitPrice) || 0) > 0);
       const discount = job.discountPercentage || 0;
       
       if (hasValidProducts) {
-        job.products.forEach(p => {
+        job.products.forEach((p: any) => {
           const currency = p.currency || job.currency;
           const val = (Number(p.quantity) || 0) * (Number(p.unitPrice) || 0);
           const finalVal = val - (val * (discount / 100));
@@ -198,13 +215,9 @@ export default function Dashboard() {
 
   // 5. Net Profit
   const profitObj: Record<string, number> = {};
-
   Object.entries(totalSalesObj).forEach(([c, v]) => { profitObj[c] = (profitObj[c] || 0) + v; });
   Object.entries(totalSupplierCostObj).forEach(([c, v]) => { profitObj[c] = (profitObj[c] || 0) - v; });
   Object.entries(totalAgentCostObj).forEach(([c, v]) => { profitObj[c] = (profitObj[c] || 0) - v; });
-
-  // The client discount is now already accounted for in totalSalesObj.
-  // We no longer need to subtract it again.
 
   transactions.forEach(t => {
     const currency = t.currency || 'USD';
@@ -278,19 +291,21 @@ export default function Dashboard() {
         {jobs.slice(0, 5).map(job => {
           const supplier = suppliers.find(s => s.id === job.supplierId);
           const container = containers.find(c => c.id === job.containerId);
-          const jobTransactions = transactions.filter(p => p.relatedId === job.id);
+          
+          const jobTransactions = transactions.filter(p => p.relatedId && String(p.relatedId) === String(job.id));
           const incomingObj = sumByCurrency(jobTransactions.filter(t => t.type === 'incoming'), t => t.currency, t => t.amount);
 
           const jobProductsValuationObjGross = job.products && job.products.length > 0
             ? job.products.reduce((acc, p) => {
-              const c = p.currency || job.currency;
-              acc[c] = (acc[c] || 0) + ((Number(p.quantity) || 0) * (Number(p.unitPrice) || 0));
-              return acc;
-            }, {} as Record<string, number>)
+                const c = p.currency || job.currency;
+                acc[c] = (acc[c] || 0) + ((Number(p.quantity) || 0) * (Number(p.unitPrice) || 0));
+                return acc;
+              }, {} as Record<string, number>)
             : { [job.currency]: job.totalPrice };
 
+          // 🚀 الحماية الحديدية للـ Type Casting هنا لإنهاء الأخطاء الحسابية تماماً في الـ TypeScript
           const jobProductsValuationObj = Object.fromEntries(
-            Object.entries(jobProductsValuationObjGross).map(([c, v]) => [c, v * (1 - (job.discountPercentage || 0) / 100)])
+            Object.entries(jobProductsValuationObjGross).map(([c, v]) => [c, Number(v) * (1 - (job.discountPercentage || 0) / 100)])
           );
 
           const formatMultiTotal = (obj: Record<string, number>) => {

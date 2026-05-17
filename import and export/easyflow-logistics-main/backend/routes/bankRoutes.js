@@ -1,9 +1,12 @@
 import express from 'express';
-import { getBanksSummary } from '../controllers/BankController.js';
+import { getBanksSummary, saveBanksSummary } from '../controllers/BankController.js';
 
 const router = express.Router();
 
+// طلب الـ GET لقراءة الأرصدة (api/banks)
+router.get('/', getBanksSummary);
 
-router.get('/summary', getBanksSummary);
+// طلب الـ POST لحفظ وتحديث الحسابات من الشاشة (api/banks/summary)
+router.post('/summary', saveBanksSummary);
 
 export default router;

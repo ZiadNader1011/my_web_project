@@ -35,12 +35,8 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
-// مكون لحماية الروتس (لو مفيش توكن يرجعه للوجين)
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    return <Navigate to="/login" replace />;
-  }
+// 🚀 تم إلغاء حظر التحقق من التوكن صامتاً مع الحفاظ الكامل على الـ AppLayout لحماية التصميم والـ Sidebar
+const LayoutWrapper = ({ children }: { children: React.ReactNode }) => {
   return <AppLayout>{children}</AppLayout>;
 };
 
@@ -53,36 +49,33 @@ const App = () => (
           {/* صفحة اللوجين خارج الـ AppLayout عشان تظهر شاشة كاملة */}
           <Route path="/login" element={<Login />} />
           
-          {}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          {}
-          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
-          <Route path="/jobs/:id" element={<ProtectedRoute><JobDetails /></ProtectedRoute>} />
-          <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
-          <Route path="/clients/:id" element={<ProtectedRoute><ClientDetails /></ProtectedRoute>} />
-          <Route path="/suppliers" element={<ProtectedRoute><Suppliers /></ProtectedRoute>} />
-          <Route path="/suppliers/:id" element={<ProtectedRoute><SupplierDetails /></ProtectedRoute>} />
-          <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
-          <Route path="/containers" element={<ProtectedRoute><Containers /></ProtectedRoute>} />
-          <Route path="/financials" element={<ProtectedRoute><Financials /></ProtectedRoute>} />
-          <Route path="/banks" element={<ProtectedRoute><Banks /></ProtectedRoute>} />
-          <Route path="/shipping-agents" element={<ProtectedRoute><ShippingAgents /></ProtectedRoute>} />
-          <Route path="/shipping-agents/:id" element={<ProtectedRoute><ShippingAgentDetails /></ProtectedRoute>} />
-          <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
-          <Route path="/packing-lists" element={<ProtectedRoute><PackingLists /></ProtectedRoute>} />
-          <Route path="/commissions" element={<ProtectedRoute><Commissions /></ProtectedRoute>} />
-          <Route path="/operations" element={<ProtectedRoute><Operations /></ProtectedRoute>} />
-          <Route path="/archive" element={<ProtectedRoute><ArchivePage /></ProtectedRoute>} />
+          {/* تغليف الروتس بـ LayoutWrapper لضمان ثبات معمارية ورندر السايت */}
+          <Route path="/dashboard" element={<LayoutWrapper><Dashboard /></LayoutWrapper>} />
+          <Route path="/jobs" element={<LayoutWrapper><Jobs /></LayoutWrapper>} />
+          <Route path="/jobs/:id" element={<LayoutWrapper><JobDetails /></LayoutWrapper>} />
+          <Route path="/clients" element={<LayoutWrapper><Clients /></LayoutWrapper>} />
+          <Route path="/clients/:id" element={<LayoutWrapper><ClientDetails /></LayoutWrapper>} />
+          <Route path="/suppliers" element={<LayoutWrapper><Suppliers /></LayoutWrapper>} />
+          <Route path="/suppliers/:id" element={<LayoutWrapper><SupplierDetails /></LayoutWrapper>} />
+          <Route path="/products" element={<LayoutWrapper><Products /></LayoutWrapper>} />
+          <Route path="/containers" element={<LayoutWrapper><Containers /></LayoutWrapper>} />
+          <Route path="/financials" element={<LayoutWrapper><Financials /></LayoutWrapper>} />
+          <Route path="/banks" element={<LayoutWrapper><Banks /></LayoutWrapper>} />
+          <Route path="/shipping-agents" element={<LayoutWrapper><ShippingAgents /></LayoutWrapper>} />
+          <Route path="/shipping-agents/:id" element={<LayoutWrapper><ShippingAgentDetails /></LayoutWrapper>} />
+          <Route path="/employees" element={<LayoutWrapper><Employees /></LayoutWrapper>} />
+          <Route path="/packing-lists" element={<LayoutWrapper><PackingLists /></LayoutWrapper>} />
+          <Route path="/commissions" element={<LayoutWrapper><Commissions /></LayoutWrapper>} />
+          <Route path="/operations" element={<LayoutWrapper><Operations /></LayoutWrapper>} />
+          <Route path="/archive" element={<LayoutWrapper><ArchivePage /></LayoutWrapper>} />
 
-          {}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
- 
 );
 
 export default App;

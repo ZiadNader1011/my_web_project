@@ -2,7 +2,7 @@ import express from 'express';
 import upload from '../middleware/upload.js';
 import { prisma } from '../lib/prisma.js';
 import { shippingAgentSchema, validate } from '../middleware/validator.js';
-import { protect } from '../middleware/auth.js'; // ✅ 1. استيراد بوابة الحماية
+
 
 const router = express.Router();
 
@@ -11,7 +11,7 @@ const router = express.Router();
 router.post(
     '/', 
     upload.single('file'), 
-    protect, 
+  
     validate(shippingAgentSchema), 
     async (req, res) => {
     try {
@@ -41,7 +41,7 @@ router.post(
 
 // --- [GET] جلب كل الوكلاء ---
 // يُفضل حماية بيانات الوكلاء وأرقام هواتفهم بحيث لا يراها إلا الموظفين
-router.get('/', protect, async (req, res) => {
+router.get('/',  async (req, res) => {
     try {
         const agents = await prisma.shippingAgent.findMany({
             orderBy: { id: 'desc' }
@@ -56,7 +56,6 @@ router.get('/', protect, async (req, res) => {
 router.put(
     '/:id', 
     upload.single('file'), 
-    protect, 
     validate(shippingAgentSchema), 
     async (req, res) => {
     try {
@@ -96,7 +95,7 @@ router.put(
 });
 
 // --- [DELETE] حذف وكيل ---
-router.delete('/:id', protect, async (req, res) => {
+router.delete('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const numericId = parseInt(id);

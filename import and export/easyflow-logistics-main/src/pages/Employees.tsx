@@ -57,12 +57,14 @@ export default function Employees() {
     setEditOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleting) return;
     const updated = employees.filter(e => e.id !== deleting.id);
-    setEmployees(updated);
-    saveEmployees(updated);
-    toast.success('Employee removed');
+    const success = await saveEmployees(updated);
+    if (success) {
+      setEmployees(updated);
+      toast.success('Employee removed');
+    }
     setDeleting(null);
   };
 

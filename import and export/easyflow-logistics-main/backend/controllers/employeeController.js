@@ -39,7 +39,13 @@ export const updateEmployee = async (req, res) => {
 export const deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
-    await prisma.employee.deleteMany({ where: { id: parseInt(id) } });
+    const numericId = parseInt(id);
+    
+    if (isNaN(numericId)) {
+        return res.status(400).json({ error: "Invalid employee ID" });
+    }
+
+    await prisma.employee.delete({ where: { id: numericId } });
     res.json({ success: true, message: "Employee deleted" });
   } catch (error) {
     res.status(400).json({ error: "Delete failed: " + error.message });

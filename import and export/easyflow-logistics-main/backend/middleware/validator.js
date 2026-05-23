@@ -12,8 +12,8 @@ export const validate = (schema) => (req, res, next) => {
 
 // --- 2. سكيما العميل (Client) ---
 export const clientSchema = Joi.object({
-    name: Joi.string().min(3).required(),
-    email: Joi.string().email().allow('', null),
+    name: Joi.string().required(),
+    email: Joi.string().allow('', null),
     country: Joi.string().allow('', null),
     company: Joi.string().allow('', null),
     phone: Joi.string().allow('', null),
@@ -25,8 +25,8 @@ export const clientSchema = Joi.object({
 // --- 3. سكيما المورد (Supplier) ---
 export const supplierSchema = Joi.object({
     name: Joi.string().required(),
-    country: Joi.string().required(),
-    email: Joi.string().email().allow('', null),
+    country: Joi.string().allow('', null),
+    email: Joi.string().allow('', null),
     product: Joi.string().allow('', null),
     phone: Joi.string().allow('', null)
 }).unknown(true);
@@ -60,7 +60,7 @@ export const jobSchema = Joi.object({
 // --- 7. سكيما وكيل الشحن (Shipping Agent) ---
 export const shippingAgentSchema = Joi.object({
     name: Joi.string().required(),
-    email: Joi.string().email().allow('', null),
+    email: Joi.string().allow('', null),
     company: Joi.string().allow('', null)
 }).unknown(true);
 

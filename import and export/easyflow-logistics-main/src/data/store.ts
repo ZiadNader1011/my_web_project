@@ -423,14 +423,14 @@ async function fetchEndpoint(endpoint: string) {
     globalStoreCache[endpoint] = data;
   } catch (err) {
     console.error(`❌ Fetch Error [${endpoint}]`, err);
-    globalStoreCache[endpoint] = []; 
+    globalStoreCache[endpoint] = [];
   }
 }
 
 let isStoreInitialized = false;
 
 async function initializeStore() {
-  if (isStoreInitialized) return; 
+  if (isStoreInitialized) return;
   isStoreInitialized = true;
 
   const endpoints = Object.keys(globalStoreCache);
@@ -491,11 +491,11 @@ function handleOrphanCleanup(endpoint: string, deletedId: string | number) {
     if (!targetData || !Array.isArray(targetData)) return;
 
     globalStoreCache[rule.targetCache] = targetData.map((item: any) => {
-      
+
       if (item.products && Array.isArray(item.products)) {
         return {
           ...item,
-          products: item.products.map((subItem: any) => 
+          products: item.products.map((subItem: any) =>
             String(subItem[rule.foreignKey]) === id
               ? { ...subItem, [rule.foreignKey]: null, ...(rule.nameField ? { [rule.nameField]: rule.fallbackName } : {}) }
               : subItem
@@ -506,8 +506,8 @@ function handleOrphanCleanup(endpoint: string, deletedId: string | number) {
       if (String(item[rule.foreignKey]) === id) {
         return {
           ...item,
-          [rule.foreignKey]: null, 
-          ...(rule.nameField ? { [rule.nameField]: rule.fallbackName } : {}) 
+          [rule.foreignKey]: null,
+          ...(rule.nameField ? { [rule.nameField]: rule.fallbackName } : {})
         };
       }
 
@@ -529,30 +529,70 @@ async function saveLive<T extends { id?: string }>(
       return false;
     }
 
-    // حماية وقراءة صريحة لآخر عنصر مستهدف منعا للـ Mutation العشوائي
-    const rawPayload = dataArray[dataArray.length - 1];
-    if (!rawPayload) return false;
+    const currentCache = globalStoreCache[endpoint] || [];
+    let targetItem = null;
+    let isUpdate = false;
 
-    const payload = normalizeItem(rawPayload);
-    if (!payload.id) {
-      payload.id = generateId();
+    // 1. Find newly added item (exists in dataArray but not in currentCache)
+    for (const newItem of dataArray) {
+      const oldItem = currentCache.find((c: any) => String(c.id) === String(newItem.id));
+      if (!oldItem) {
+        targetItem = newItem;
+        isUpdate = false;
+        break;
+      }
     }
 
-    const existingIndex = globalStoreCache[endpoint]?.findIndex(
-      (item: any) => item.id === payload.id
-    );
+    // 2. If no new item, check for a modified item
+    if (!targetItem) {
+      for (const newItem of dataArray) {
+        const oldItem = currentCache.find((c: any) => String(c.id) === String(newItem.id));
+        if (oldItem && JSON.stringify(oldItem) !== JSON.stringify(newItem)) {
+          targetItem = newItem;
+          isUpdate = true;
+          break;
+        }
+      }
+    }
 
-    if (existingIndex >= 0) {
-      globalStoreCache[endpoint][existingIndex] = payload;
+    // 3. Fallback: take the last item if no changes detected
+    if (!targetItem) {
+      targetItem = dataArray[dataArray.length - 1];
+      isUpdate = !!currentCache.find((c: any) => String(c.id) === String(targetItem?.id));
+    }
+
+    if (!targetItem) return false;
+    const payload = normalizeItem(targetItem);
+
+    if (isUpdate) {
+      // ✅ Update existing item securely
+      try {
+        await api.put(`/${endpoint}/${payload.id}`, payload);
+      } catch (err: any) {
+        // Fallback to POST if PUT is not allowed on some older endpoints
+        if (err.response?.status === 404 || err.response?.status === 405) {
+          await api.post(`/${endpoint}`, payload);
+        } else {
+          throw err;
+        }
+      }
     } else {
-      globalStoreCache[endpoint].push(payload);
+      // ✅ Create new item and sync backend ID with frontend state immediately
+      const res = await api.post(`/${endpoint}`, payload);
+      if (res.data && res.data.id) {
+        const originalItem = dataArray.find((d: any) => String(d.id) === String(targetItem.id));
+        if (originalItem) {
+          originalItem.id = String(res.data.id); // 🚀 This fixes the delete bug!
+        }
+      }
     }
 
-    await api.post(`/${endpoint}`, payload);
     await fetchEndpoint(endpoint);
     return true;
-  } catch (err) {
+  } catch (err: any) {
     console.error(`❌ Save Live Error [${endpoint}]`, err);
+    const backendError = err.response?.data?.error || err.message;
+    toast.error(`Error saving: ${backendError}`);
     return false;
   }
 }
@@ -732,8 +772,8 @@ export async function saveBankBalances(d: BankBalances) {
 // UTILITIES & MATHEMATICAL HELPERS (NaN Protected)
 // ============================================================================
 
-export function generateId() { 
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); 
+export function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
 export function formatCurrency(amount: number, currency: string) {
